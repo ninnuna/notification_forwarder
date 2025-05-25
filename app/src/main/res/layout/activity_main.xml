@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    tools:context=".MainActivity">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:text="Notification Forwarder  "
+        android:textSize="24sp"
+        android:textStyle="bold" />
+
+    <!-- Collapsible Header -->
+        <TextView
+            android:id="@+id/status_text_view"
+            android:layout_width="153dp"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:text="Status: Off"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+    <TextView
+        android:id="@+id/token_section_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Web Token ▼"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:drawableEnd="@android:drawable/arrow_down_float"
+        android:drawableRight="@android:drawable/arrow_down_float"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:layout_marginBottom="0dp" />
+
+    <!-- Collapsible Content -->
+    <LinearLayout
+        android:id="@+id/token_section_content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Enter your Slack Web Token:"
+            android:layout_marginBottom="8dp" />
+
+        <EditText
+            android:id="@+id/web_token_edit_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Web Token (e.g., ABCdefGHIj/klMNOpqrSTUvwxYZ)"
+            android:inputType="text"
+            android:layout_marginBottom="16dp"/>
+
+        <Button
+            android:id="@+id/save_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Save Settings"
+            android:layout_marginBottom="8dp" />
+    </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/app_list_recycler_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginBottom="32dp"
+        android:layout_marginTop="32dp"
+        android:layout_weight="1" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/start_service_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Start"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/stop_service_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Stop"
+            android:layout_marginStart="8dp" />
+
+        <Button
+            android:id="@+id/test_notification"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:text="Notify" />
+
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="This app forwards notifications to your Slack chat. Make sure to allow notification access in system settings."
+        android:layout_marginTop="24dp"
+        android:gravity="center" />
+
+</LinearLayout>
