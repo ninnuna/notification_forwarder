@@ -5,7 +5,6 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -19,13 +18,18 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Date;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 public class NotificationService extends NotificationListenerService {
 
-    public static final String MSG_STRING = "*Sub:* %s\n*Msg:* %s\n_-- %s @ %s_\n--------------------------------------------------------";
+    public static final String MSG_STRING = "*Sub:* %s\n*Msg:* %s\n_%s_\n";
+    public static final String MSG_STRING_1 = "*Info:* %s\n_%s_\n";
     private static final String TAG = "NotificationService";
     private static final String CHANNEL_ID = "notification_forwarder_channel";
     private static final int FOREGROUND_NOTIFICATION_ID = 1;
@@ -34,6 +38,8 @@ public class NotificationService extends NotificationListenerService {
     private PreferenceManager preferenceManager;
     private ExecutorService executorService;
 
+    private NotificationManager notificationManager;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -41,7 +47,7 @@ public class NotificationService extends NotificationListenerService {
 
         preferenceManager = new PreferenceManager(this);
         executorService = Executors.newSingleThreadExecutor();
-
+        notificationManager = getSystemService(NotificationManager.class);
         createNotificationChannel();
         startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundNotification());
     }
@@ -81,41 +87,107 @@ public class NotificationService extends NotificationListenerService {
             return;
         }
 
+        if (System.currentTimeMillis() - sbn.getNotification().when > 86400000) {
+            return;
+        }
+
         if (!preferenceManager.getSelectedPackages().contains(sbn.getPackageName())) {
             return; // Ignore notifications from unselected packages
         }
 
         Notification notification = sbn.getNotification();
-        CharSequence title = notification.extras.getCharSequence(Notification.EXTRA_TITLE);
-        CharSequence text = notification.extras.getCharSequence(Notification.EXTRA_TEXT);
+        CharSequence charTitle = notification.extras.getCharSequence(Notification.EXTRA_TITLE);
+        CharSequence charText = notification.extras.getCharSequence(Notification.EXTRA_TEXT);
         String appName = getApplicationName(sbn.getPackageName());
 
-        if (title == null) title = "";
-        if (text == null) text = "";
+        String title = charTitle == null ? "" : charTitle.toString();
+        String text = charText == null ? "" : charText.toString();
+        if (title.isEmpty() && text.isEmpty()) {
+            return;
+        }
+        String lowerTitle = title.toLowerCase();
+        String lowerText = text.toLowerCase();
+        if (appName.toLowerCase().contains("whatsapp") &&
+                !(lowerTitle.contains("ruchika") ||
+                lowerTitle.contains("school") ||
+                lowerTitle.contains("nursery") ||
+                lowerText.contains("ruchika") ||
+                lowerText.contains("school") ||
+                lowerText.contains("nursery"))) {
+            return;
+        }
+        String senderInfo = String.format("-- %s @ %s", appName, epochToTimeStamp(sbn.getNotification().when));
+        final String message = (!(title.isEmpty() || text.isEmpty()) ?
+                String.format(MSG_STRING, title, text, senderInfo) :
+                String.format(MSG_STRING_1, title.isEmpty() ? text : title, senderInfo)) + "-".repeat(senderInfo.length());
 
-        final String message = String.format(MSG_STRING,
-                title, text, appName, epochToTimeStamp(sbn.getNotification().when));
-       sendMessage(title, message, appName);
-
+        if (preferenceManager.getLruCache().get(message.hashCode()) == -1) {
+            sendMessage(title, message, appName, sbn.getPackageName().toLowerCase(), sbn.getTag(), sbn.getId());
+        }
+        preferenceManager.getLruCache().put(message.hashCode(), sbn.getNotification().when);
     }
-
-    public void sendMessage(CharSequence title, String message, String appName) {
-        String webToken = preferenceManager.getWebToken();
-        if (TextUtils.isEmpty(webToken)) {
+    public void sendMessage(CharSequence title, String message, String appName, String packageName,
+                            String tag, int id) {
+        String tokens = preferenceManager.getWebToken();
+        if (TextUtils.isEmpty(tokens)) {
             Log.e(TAG, "Web token not set");
             return;
         }
+
+        Map<String, String> tokenMap = Arrays.stream(tokens.split(","))
+                .map(pair -> pair.split("##"))
+                .filter(pair -> pair.length == 2)
+                .collect(Collectors.toMap(pair -> pair[0], pair -> pair[1]));
+
+        String key;
+        String lowerCaseAppName = appName.toLowerCase();
+
+        if (lowerCaseAppName.contains("teams") || lowerCaseAppName.contains("outlook")) {
+            key = "client";
+        } else if (lowerCaseAppName.contains("gmail") || packageName.equals("com.google.android.calendar")) {
+            key = "ttn";
+        } else if (lowerCaseAppName.contains("whatsapp")) {
+            key = "colab";
+        } else {
+            key = "other";
+        }
+
+        String webToken = tokenMap.get(key);
+
+        if (TextUtils.isEmpty(webToken)) {
+            Log.e(TAG, "No valid token found for app: " + appName);
+            return;
+        }
+
         // Process notification in a background thread
         executorService.execute(() -> {
+            if (key.equals("colab")) {
+                TelegramHelper.sendMessage(webToken, message, success -> {
+                    if (success) {
+                        showForwardedNotification(appName, title.toString());
+                        notificationManager.cancel(tag, id);
+                        if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) % 2 == 0){
+                            notificationManager.cancelAll();
+                        }
+                        Log.d(TAG, "Message sent successfully");
+                    } else {
+                        Log.e(TAG, "Failed to send message");
+                    }
+                });
+            } else {
             SlackHelper.sendMessage(webToken, message, success -> {
                 if (success) {
                     showForwardedNotification(appName, title.toString());
+                    notificationManager.cancel(tag, id);
+                    if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) % 2 == 0){
+                        notificationManager.cancelAll();
+                    }
                     Log.d(TAG, "Message sent successfully");
                 } else {
                     Log.e(TAG, "Failed to send message");
                 }
             });
-        });
+        }});
     }
     private String getApplicationName(String packageName) {
         PackageManager packageManager = getPackageManager();
@@ -134,8 +206,6 @@ public class NotificationService extends NotificationListenerService {
                     "Notification Forwarder Service",
                     NotificationManager.IMPORTANCE_LOW);
             channel.setDescription("Channel for Notification Forwarder Service");
-
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
             }
@@ -176,7 +246,6 @@ public class NotificationService extends NotificationListenerService {
                 .setSmallIcon(R.drawable.ic_stat_name)
                 .setAutoCancel(true);
 
-        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (notificationManager != null) {
             // Use a dynamic ID to ensure notifications don't override each other
             int notificationId = (int) System.currentTimeMillis();

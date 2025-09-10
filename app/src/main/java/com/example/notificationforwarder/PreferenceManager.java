@@ -3,10 +3,12 @@ package com.example.notificationforwarder;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.text.TextUtils;
+
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class PreferenceManager {
-
     private static final String PREFERENCES_NAME = "notification_forwarder_preferences";
     private static final String KEY_WEB_TOKEN = "web_token";
     private static final String KEY_SERVICE_ENABLED = "service_enabled";
@@ -17,6 +19,12 @@ public class PreferenceManager {
 
     public String getSelectedPackages() {
         return preferences.getString(KEY_SELECTED_PACKAGES, "");
+    }
+
+    private final LRUCache lruCache = new LRUCache(2000);
+
+    public LRUCache getLruCache() {
+        return lruCache;
     }
 
     public void setSelectedPackages(String csv) {

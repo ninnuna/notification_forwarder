@@ -25,7 +25,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Date;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -86,9 +86,8 @@ public class MainActivity extends AppCompatActivity {
         appListRecyclerView.setAdapter(appListAdapter);
 
         // Load saved values
-        String webToken = preferenceManager.getWebToken();
-        if (!TextUtils.isEmpty(webToken)) {
-            webTokenEditText.setText(webToken);
+        if (!TextUtils.isEmpty(preferenceManager.getWebToken())) {
+            webTokenEditText.setText(preferenceManager.getWebToken());
         }
 
         saveButton.setOnClickListener(v -> saveSettings());
@@ -109,7 +108,7 @@ public class MainActivity extends AppCompatActivity {
         loadInstalledApps();
 
         // Auto-start service if settings are available
-        if (!TextUtils.isEmpty(webToken) && !isServiceRunning(NotificationService.class)) {
+        if (!TextUtils.isEmpty(preferenceManager.getWebToken()) && !isServiceRunning(NotificationService.class)) {
             startNotificationService();
         }
     }
@@ -247,8 +246,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void saveSelectedPackages() {
-        String csv = TextUtils.join(",", selectedPackages);
-        preferenceManager.setSelectedPackages(csv);
+        preferenceManager.setSelectedPackages(TextUtils.join(",", selectedPackages));
     }
 
     private void loadInstalledApps() {
@@ -256,17 +254,19 @@ public class MainActivity extends AppCompatActivity {
         List<ApplicationInfo> packages = pm.getInstalledApplications(PackageManager.GET_META_DATA);
         appList.clear();
         for (ApplicationInfo appInfo : packages) {
-            if ((appInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0 ||
-                    (appInfo.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) { // skip system apps
+//            if ((appInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0 ||
+//                    (appInfo.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) { // skip system apps
                 String appName = pm.getApplicationLabel(appInfo).toString();
                 String packageName = appInfo.packageName;
-                Drawable icon = appInfo.loadIcon(pm);
+                Drawable icon = ((appInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0 || (appInfo.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) ? appInfo.loadIcon(pm):null;
                 boolean isSelected = selectedPackages.contains(packageName);
-                appList.add(new AppInfo(appName, packageName, icon, isSelected));
-            }
+                appList.add(new AppInfo(appName, packageName, icon, isSelected, !((appInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0 || (appInfo.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0)));
+//            }
         }
         // Sort alphabetically
-        appList.sort((a, b) -> a.appName.compareToIgnoreCase(b.appName));
+        appList.sort(Comparator.comparing(AppInfo::isSelected).reversed()
+                .thenComparing(AppInfo::isSystem)
+                .thenComparing((a, b) -> a.appName.compareToIgnoreCase(b.appName)));
         appListAdapter.notifyDataSetChanged();
     }
 
