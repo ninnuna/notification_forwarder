@@ -9,19 +9,22 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.function.Consumer;
 
-public class TelegramHelper {
+public class TelegramHelper implements MessageHelper{
 
     private static final String TAG = "TelegramHelper";
     private static final String API_URL = "https://api.telegram.org/bot%s/sendMessage";
     private static final int TIMEOUT_MS = 10000;
+    private static final String MSG_STRING = "<b>Sub:</b> %s\n<b>Msg:</b> %s\n<i>%s</i>\n";
+    private static final String MSG_STRING_1 = "<b>Info:</b> %s\n<i>%s</i>\n";
 
-    public interface SendMessageCallback {
-        void onComplete(boolean success);
-    }
-
-    public static void sendMessage(String webToken, String message, SendMessageCallback callback) {
+    @Override
+    public void sendMessage(String webToken, String title, String text, String senderInfo, Consumer<Boolean> callback) {
         Thread thread = new Thread(() -> {
+            final String message = (!(title.isEmpty() || text.isEmpty()) ?
+                    String.format(MSG_STRING, title, text, senderInfo) :
+                    String.format(MSG_STRING_1, title.isEmpty() ? text : title, senderInfo)) + "-".repeat(senderInfo.length());
             boolean success = false;
             HttpURLConnection conn = null;
             String[] tokenNChat = webToken.split("@@@");
@@ -34,7 +37,7 @@ public class TelegramHelper {
                 conn.setConnectTimeout(TIMEOUT_MS);
                 conn.setReadTimeout(TIMEOUT_MS);
 
-                String urlParameters = "&parse_mode=MarkdownV2&chat_id=" + tokenNChat[1] + "&text=" + message.replace("-","\\-");
+                String urlParameters = "&parse_mode=HTML&chat_id=" + tokenNChat[1] + "&text=" + message;
                 byte[] postData = urlParameters.getBytes(StandardCharsets.UTF_8);
 
                 try (OutputStream os = conn.getOutputStream()) {
@@ -56,7 +59,7 @@ public class TelegramHelper {
                 }
 
                 final boolean finalSuccess = success;
-                new Handler(Looper.getMainLooper()).post(() -> callback.onComplete(finalSuccess));
+                new Handler(Looper.getMainLooper()).post(() -> callback.accept(finalSuccess));
             }
         });
 

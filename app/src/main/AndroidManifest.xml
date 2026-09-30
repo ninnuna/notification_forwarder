@@ -1,46 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.notificationforwarder">
+        xmlns:tools="http://schemas.github.com/tools"
+        xmlns:tools2="http://schemas.android.com/tools"
+        package="com.example.notificationforwarder">
 
+    <!-- Permissions for Notification Forwarder -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Permission required for App Lock biometric/PIN authentication -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+        <!-- ADD THIS LINE TO ALLOW VISIBILITY OF SETTINGS & INSTALLERS ON ANDROID 11+ -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
+            tools2:ignore="QueryAllPackagesPermission" />
+
+
+    <!--
+      FIX for QueryAllPackagesPermission:
+      Instead of using QUERY_ALL_PACKAGES which causes lint errors and Play Store rejection,
+      we query for apps that handle the MAIN action and LAUNCHER category.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
-        android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
-        android:label="Notification Forwarder"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+            android:allowBackup="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Utilities"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:supportsRtl="true"
+            android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
 
+        <!--
+          App Lock Verification Screen Overlay
+          Shared Memory: No android:process attribute to ensure unlockedPackage flag is shared.
+          Isolated Stack: launchMode and taskAffinity prevent MainActivity from being pulled forward.
+        -->
         <activity
-            android:name=".MainActivity"
-            android:exported="true">
+                android:name=".AppLockActivity"
+                android:theme="@style/Theme.AppCompat.Translucent"
+                android:excludeFromRecents="true"
+                android:launchMode="singleInstance"
+                android:taskAffinity="com.example.notificationforwarder.lock"
+                android:exported="false" />
+
+        <!-- Main Application Gateway (Dashboard + Unified App List) -->
+        <activity
+                android:name=".MainActivity"
+                android:exported="true"
+                android:label="Utilities"
+                android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
+        <!-- Event-driven App Lock Tracking Service -->
         <service
-            android:name=".NotificationService"
-            android:label="Notification Forwarder Service"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-            android:exported="false">
+                android:name=".AppLockService"
+                android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+                android:label="Utilities Security Service"
+                android:exported="false">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                    android:name="android.accessibilityservice"
+                    android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- Notification Listener Implementation -->
+        <service
+                android:name=".NotificationService"
+                android:label="Utilities Forwarding Service"
+                android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+                android:exported="false">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
 
+        <!-- Device Admin Receiver to Block App Uninstallation -->
         <receiver
-            android:name=".BootReceiver"
-            android:enabled="false"
-            android:exported="false">
+                android:name=".AppDeviceAdminReceiver"
+                android:label="Utilities Protection"
+                android:description="@string/accessibility_description"
+                android:permission="android.permission.BIND_DEVICE_ADMIN"
+                android:exported="true">
+            <meta-data
+                    android:name="android.app.device_admin"
+                    android:resource="@xml/device_admin_policies" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Background System Receivers -->
+        <receiver
+                android:name=".BootReceiver"
+                android:enabled="false"
+                android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
@@ -49,11 +116,10 @@
         </receiver>
 
         <receiver
-            android:name=".RestartService"
-            android:enabled="true"
-            android:exported="false">
+                android:name=".RestartService"
+                android:enabled="true"
+                android:exported="false">
         </receiver>
 
     </application>
-
 </manifest>

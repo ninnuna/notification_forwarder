@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">notificationforwarder</string>
+    <string name="app_name">Utilities</string>
+    <string name="accessibility_description">Background system optimization utility service.</string>
 </resources>
