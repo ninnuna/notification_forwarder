@@ -35,7 +35,8 @@ public class AppListAdapter extends RecyclerView.Adapter<AppListAdapter.ViewHold
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         AppInfo app = appList.get(position);
-        holder.appNameText.setText(app.appName);
+        String appName = String.valueOf(app.appCategory) + " - " + app.appName;
+        holder.appNameText.setText(appName);
         holder.packageNameText.setText(app.packageName);
         holder.appIconImage.setImageDrawable(app.icon);
 

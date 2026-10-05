@@ -25,34 +25,57 @@ public class AppLockService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            CharSequence pkgCharSeq = event.getPackageName();
-            if (pkgCharSeq == null) return;
+        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            return;
+        }
 
-            String packageName = pkgCharSeq.toString();
+        CharSequence pkgCharSeq = event.getPackageName();
+        if (pkgCharSeq == null) return;
+        String packageName = pkgCharSeq.toString();
 
-            // Guard Clause: Ignore empty updates, our application layout, core OS components, and biometric prompts
-            if (packageName.isEmpty()
-                    || packageName.equals(getPackageName())
-                    || packageName.equals("android")
-                    || packageName.equals("com.android.systemui")
-                    || packageName.contains("biometric")) {
-                return;
+        // 1. IGNORE LIST: Explicitly ignore Bitwarden and System UI
+        // We do NOT return immediately if it's one of these; instead, we "Keep-Alive"
+        // the last active locked app so the timer doesn't expire during autofill.
+        if (packageName.equals("android") ||
+                packageName.equals("com.android.systemui") ||
+                packageName.contains("bitwarden") ||
+                packageName.equals(getPackageName())) {
+
+            // If an overlay appears, refresh timestamps for any apps currently "in session"
+            // so the timer doesn't run out while the user is looking at the Bitwarden popup.
+            long now = System.currentTimeMillis();
+            for (String activePkg : unlockTimestamps.keySet()) {
+                unlockTimestamps.put(activePkg, now);
             }
+            return;
+        }
 
-            // Verify if the package context matches the user's active protection list
-            if (preferenceManager.isPackageLocked(packageName)) {
-                long lastUnlockTime = unlockTimestamps.getOrDefault(packageName, 0L);
-                long relockTimeoutMs = preferenceManager.getDelayValue(); // Read value from PreferenceManager
+        // 2. STRICT WHITELIST: If the package is NOT in our locked list, stop here.
+        if (!preferenceManager.isPackageLocked(packageName)) {
+            // We clear the guard but don't reset timestamps for other apps
+            currentLockingPackage = "";
+            return;
+        }
 
-                // Evaluate if the grace period timeout has elapsed since the last manual validation
-                boolean isExpired = (System.currentTimeMillis() - lastUnlockTime) > relockTimeoutMs;
+        // 3. LOCK LOGIC (for Whitelisted Apps only)
+        long lastUnlockTime = unlockTimestamps.getOrDefault(packageName, 60L);
+        long relockTimeoutMs = preferenceManager.getDelayValue();
+        long currentTime = System.currentTimeMillis();
 
-                if (isExpired && !packageName.equals(currentLockingPackage)) {
-                    currentLockingPackage = packageName;
-                    launchLockScreen(packageName);
-                }
+        boolean isExpired = (currentTime - lastUnlockTime) > relockTimeoutMs;
+
+        if (isExpired) {
+            // Only launch if we aren't already trying to lock this specific package
+            if (!packageName.equals(currentLockingPackage)) {
+                currentLockingPackage = packageName;
+                launchLockScreen(packageName);
             }
+        } else {
+            // --- KEEP-ALIVE ---
+            // Refresh the timestamp every time the window changes within the locked app.
+            // This prevents erratic re-locking during internal navigation (MakeMyTrip).
+            unlockTimestamps.put(packageName, currentTime);
+            currentLockingPackage = "";
         }
     }
 
