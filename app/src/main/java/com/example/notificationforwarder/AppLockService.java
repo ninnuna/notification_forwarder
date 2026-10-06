@@ -1,8 +1,13 @@
 package com.example.notificationforwarder;
 
 import android.accessibilityservice.AccessibilityService;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Intent;
+import android.os.Build;
 import android.view.accessibility.AccessibilityEvent;
+import androidx.core.app.NotificationCompat;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -10,17 +15,25 @@ import java.util.Map;
 public class AppLockService extends AccessibilityService {
 
     private PreferenceManager preferenceManager;
-
-    // Tracks when each package was last verified successfully: <PackageName, EpochTimestamp>
     private static final Map<String, Long> unlockTimestamps = new HashMap<>();
-
-    // Concurrency guard layout tracker to prevent rapid multi-intent firing cycles
     public static String currentLockingPackage = "";
+    private static final String CHANNEL_ID = "AppLockServiceChannel";
+    private String lastActivePackage = "";
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         preferenceManager = new PreferenceManager(this);
+
+        // FIX: Start as Foreground Service to prevent OS from killing it
+        createNotificationChannel();
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("App Protector Active")
+                .setContentText("Monitoring protected applications")
+                .setSmallIcon(R.drawable.ic_launcher_foreground) // Ensure this icon exists
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .build();
+        startForeground(1, notification);
     }
 
     @Override
@@ -33,16 +46,22 @@ public class AppLockService extends AccessibilityService {
         if (pkgCharSeq == null) return;
         String packageName = pkgCharSeq.toString();
 
-        // 1. IGNORE LIST: Explicitly ignore Bitwarden and System UI
-        // We do NOT return immediately if it's one of these; instead, we "Keep-Alive"
-        // the last active locked app so the timer doesn't expire during autofill.
+        // FIX: If the event is coming from our own Lock Screen or App, ignore it.
+        // This prevents the "Flicker Loop" where starting the lock triggers another lock check.
+        if (packageName.equals(getPackageName()) || packageName.contains("AppLockActivity")) {
+            return;
+        }
+
+        if (packageName.equals(lastActivePackage)) {
+            unlockTimestamps.put(packageName, System.currentTimeMillis());
+            return;
+        }
+
+        // 1. IGNORE LIST (Bitwarden / System UI)
         if (packageName.equals("android") ||
                 packageName.equals("com.android.systemui") ||
-                packageName.contains("bitwarden") ||
-                packageName.equals(getPackageName())) {
+                packageName.contains("bitwarden")) {
 
-            // If an overlay appears, refresh timestamps for any apps currently "in session"
-            // so the timer doesn't run out while the user is looking at the Bitwarden popup.
             long now = System.currentTimeMillis();
             for (String activePkg : unlockTimestamps.keySet()) {
                 unlockTimestamps.put(activePkg, now);
@@ -50,52 +69,73 @@ public class AppLockService extends AccessibilityService {
             return;
         }
 
-        // 2. STRICT WHITELIST: If the package is NOT in our locked list, stop here.
+        // 2. STRICT WHITELIST
         if (!preferenceManager.isPackageLocked(packageName)) {
-            // We clear the guard but don't reset timestamps for other apps
-            currentLockingPackage = "";
+            // Only clear the guard if we've actually moved to a different app
+            if (!packageName.equals(currentLockingPackage)) {
+                currentLockingPackage = "";
+            }
             return;
         }
 
-        // 3. LOCK LOGIC (for Whitelisted Apps only)
-        long lastUnlockTime = unlockTimestamps.getOrDefault(packageName, 60L);
+        // 3. LOCK LOGIC
+        long lastUnlockTime = unlockTimestamps.getOrDefault(packageName, 0L);
         long relockTimeoutMs = preferenceManager.getDelayValue();
         long currentTime = System.currentTimeMillis();
 
-        boolean isExpired = (currentTime - lastUnlockTime) > relockTimeoutMs;
+        boolean isExpired = (lastUnlockTime == 0) || (currentTime - lastUnlockTime) > relockTimeoutMs;
 
         if (isExpired) {
-            // Only launch if we aren't already trying to lock this specific package
+            // FIX: Guard against rapid multi-intent firing
             if (!packageName.equals(currentLockingPackage)) {
                 currentLockingPackage = packageName;
                 launchLockScreen(packageName);
             }
         } else {
-            // --- KEEP-ALIVE ---
-            // Refresh the timestamp every time the window changes within the locked app.
-            // This prevents erratic re-locking during internal navigation (MakeMyTrip).
+            // Keep-Alive for internal navigation
             unlockTimestamps.put(packageName, currentTime);
-            currentLockingPackage = "";
+            // If the user is actively using the app, clear the locking guard
+            if (packageName.equals(currentLockingPackage)) {
+                currentLockingPackage = "";
+            }
         }
-    }
-
-    /**
-     * Updates the persistent grace period timestamp maps when a user successfully authenticates.
-     */
-    public static void setAppUnlocked(String packageName) {
-        unlockTimestamps.put(packageName, System.currentTimeMillis());
-        currentLockingPackage = "";
     }
 
     private void launchLockScreen(String packageName) {
         Intent intent = new Intent(this, AppLockActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        // FIX: Use FLAG_ACTIVITY_SINGLE_TOP to prevent multiple instances
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         intent.putExtra("TARGET_PACKAGE", packageName);
         startActivity(intent);
     }
 
-    @Override
-    public void onInterrupt() {
-        // Essential execution placeholder for AccessibilityService models
+    // Update this method in AppLockService.java
+    public static void setAppUnlocked(String packageName, AppLockService serviceInstance) {
+        unlockTimestamps.put(packageName, System.currentTimeMillis());
+        currentLockingPackage = "";
+
+        // This is the vital part:
+        if (serviceInstance != null) {
+            serviceInstance.lastActivePackage = packageName;
+        }
     }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel serviceChannel = new NotificationChannel(
+                    CHANNEL_ID,
+                    "App Lock Service Channel",
+                    NotificationManager.IMPORTANCE_LOW
+            );
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(serviceChannel);
+            }
+        }
+    }
+
+    @Override
+    public void onInterrupt() {}
 }

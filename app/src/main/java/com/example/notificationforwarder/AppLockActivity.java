@@ -43,7 +43,7 @@ public class AppLockActivity extends AppCompatActivity {
                     public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                         super.onAuthenticationSucceeded(result);
                         // Save the verification timestamp context in the background service tracker
-                        AppLockService.setAppUnlocked(targetPackage);
+                        AppLockService.setAppUnlocked(targetPackage, null);
                         finish();
                     }
 
