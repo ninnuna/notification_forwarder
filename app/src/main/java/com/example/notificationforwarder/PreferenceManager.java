@@ -88,7 +88,6 @@ public class PreferenceManager {
      * Using a Set matches the standard SharedPreferences.getStringSet API.
      */
     public Set<String> getLockedPackages() {
-        // Return a Set instead of a List to avoid type mismatch
         return preferences.getStringSet("locked_packages", new HashSet<>());
     }
 
@@ -96,8 +95,14 @@ public class PreferenceManager {
      * Saves the set of locked packages.
      */
     public void setLockedPackages(List<String> packageList) {
-        // Converts the List back to a Set for storage
-        Set<String> set = new HashSet<>(packageList);
+        Set<String> set = new HashSet<>();
+        if (packageList != null) {
+            for (String pkg : packageList) {
+                if (!TextUtils.isEmpty(pkg)) {
+                    set.add(pkg.trim());
+                }
+            }
+        }
         preferences.edit().putStringSet("locked_packages", set).apply();
     }
 
@@ -108,8 +113,14 @@ public class PreferenceManager {
      * @return true if the package is locked.
      */
     public boolean isPackageLocked(String packageName) {
+        if (TextUtils.isEmpty(packageName)) {
+            return false;
+        }
         Set<String> locked = getLockedPackages();
-        return locked != null && locked.contains(packageName);
+        if (locked == null || locked.isEmpty()) {
+            return false;
+        }
+        return locked.contains(packageName.trim());
     }
 
     // --- Notification Forwarding Logic ---
