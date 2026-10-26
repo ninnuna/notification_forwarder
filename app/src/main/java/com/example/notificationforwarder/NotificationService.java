@@ -44,7 +44,6 @@ public class NotificationService extends NotificationListenerService {
     public static Map<String, String> tokenMap;
     public static final MessageHelper slackHelper = new SlackHelper();
     public static final MessageHelper telegramHelper = new TelegramHelper();
-    private NetworkSpeedOverlay networkSpeedOverlay;
 
     @Override
     public void onCreate() {
@@ -56,8 +55,6 @@ public class NotificationService extends NotificationListenerService {
         notificationManager = getSystemService(NotificationManager.class);
         createNotificationChannel();
         startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundNotification());
-        networkSpeedOverlay = new NetworkSpeedOverlay(this);
-        networkSpeedOverlay.startTracking();
     }
 
     @Override
@@ -79,9 +76,6 @@ public class NotificationService extends NotificationListenerService {
 
         if (executorService != null) {
             executorService.shutdown();
-        }
-        if (networkSpeedOverlay != null) {
-            networkSpeedOverlay.stopTracking();
         }
     }
 
