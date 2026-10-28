@@ -77,7 +77,7 @@ public class AppLockService extends AccessibilityService {
         // STRICT WHITELIST: If package is NOT locked, record foreground app and exit
         if (!preferenceManager.isPackageLocked(packageName)) {
             currentForegroundApp = packageName;
-            if (!packageName.equals(currentLockingPackage)) {
+            if (!AppLockActivity.isVisible && !packageName.equals(currentLockingPackage)) {
                 currentLockingPackage = "";
             }
             return;
@@ -104,7 +104,7 @@ public class AppLockService extends AccessibilityService {
         boolean isExpired = !isUnlocked || (lastLeaveTime > 0 && awayDuration > relockTimeoutMs);
 
         if (isExpired) {
-            if (!packageName.equals(currentLockingPackage)) {
+            if (!packageName.equals(currentLockingPackage) && !AppLockActivity.isVisible) {
                 currentLockingPackage = packageName;
                 launchLockScreen(packageName);
             }

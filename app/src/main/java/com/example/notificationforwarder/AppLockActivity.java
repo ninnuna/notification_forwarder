@@ -20,12 +20,15 @@ public class AppLockActivity extends AppCompatActivity {
     private String targetPackage;
     private PreferenceManager preferenceManager;
     private EditText pinInputField;
-    private Button btnVerifyPin, btnUseBiometric;
+    private Button btnVerifyPin;
+    private Button btnUseBiometric;
     private boolean biometricPromptShown = false;
+    public static boolean isVisible = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        isVisible = true;
         setContentView(R.layout.activity_app_lock);
 
         preferenceManager = new PreferenceManager(this);
@@ -42,6 +45,12 @@ public class AppLockActivity extends AppCompatActivity {
 
         btnVerifyPin.setOnClickListener(v -> verifyPin());
         btnUseBiometric.setOnClickListener(v -> showBiometricPrompt());
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        isVisible = false;
     }
 
     @Override
@@ -84,15 +93,14 @@ public class AppLockActivity extends AppCompatActivity {
                     @Override
                     public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
                         super.onAuthenticationError(errorCode, errString);
-                        // Only exit to home screen if the user explicitly canceled
-                        if (errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
-                                errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
-                            AppLockService.currentLockingPackage = "";
-                            goToHomeScreen();
-                        } else {
-                            // Transient startup cancellation or lockout - keep PIN view visible
-                            btnUseBiometric.setVisibility(View.VISIBLE);
-                        }
+                        // Transient startup cancellation, lockout, or system-dismissal
+                        // We shouldn't blindly go to home screen for code 10 (User Canceled) because 
+                        // Android sometimes sends it when an underlying app finishes launching and steals focus.
+                        // Instead, we just keep the PIN layout visible. The user can manually go home, 
+                        // or click "Use Biometrics" to try again.
+                        
+                        // We ONLY go to home screen if the user presses the Back button.
+                        btnUseBiometric.setVisibility(View.VISIBLE);
                     }
                 });
 
