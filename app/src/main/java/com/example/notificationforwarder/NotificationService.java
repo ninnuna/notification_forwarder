@@ -27,19 +27,39 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import android.app.usage.UsageEvents;
+import android.app.usage.UsageStatsManager;
 
 public class NotificationService extends NotificationListenerService {
 
     private static final String TAG = "NotificationService";
-    private static final String CHANNEL_ID = "notification_forwarder_channel";
+    private static final String CHANNEL_ID = "notification_forwarder_channel_v4";
     private static final int FOREGROUND_NOTIFICATION_ID = 1;
     private static final String OWN_PACKAGE_NAME = "com.example.notificationforwarder";
     private PreferenceManager preferenceManager;
     private ExecutorService executorService;
+    
+    // --- App Lock Tracking Variables ---
+    private ScheduledExecutorService pollingExecutor;
+    private UsageStatsManager usageStatsManager;
+    private static final Map<String, Long> unlockTimestamps = new HashMap<>();
+    private static final Map<String, Long> leaveTimestamps = new HashMap<>();
+    public static String currentLockingPackage = "";
+    private static String currentForegroundApp = "";
+    private static long lastLockLaunchTime = 0;
+    
+    // --- Network Speed Tracking Variables ---
+    private long lastRxBytes = android.net.TrafficStats.UNSUPPORTED;
+    private long lastTxBytes = android.net.TrafficStats.UNSUPPORTED;
+    private long lastSpeedCheckTime = 0;
+    
     private NotificationManager notificationManager;
     public static Map<String, String> tokenMap;
     public static final MessageHelper slackHelper = new SlackHelper();
@@ -50,11 +70,14 @@ public class NotificationService extends NotificationListenerService {
         super.onCreate();
         Log.d(TAG, "Service created");
         preferenceManager = new PreferenceManager(this);
+        usageStatsManager = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
         tokenMap = parseWebTokens(preferenceManager.getWebToken());
         executorService = Executors.newSingleThreadExecutor();
         notificationManager = getSystemService(NotificationManager.class);
         createNotificationChannel();
         startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundNotification());
+        
+        startAppLockPolling();
     }
 
     @Override
@@ -77,7 +100,179 @@ public class NotificationService extends NotificationListenerService {
         if (executorService != null) {
             executorService.shutdown();
         }
+        if (pollingExecutor != null) {
+            pollingExecutor.shutdownNow();
+        }
     }
+
+    // --- Polling Logic ---
+    private void startAppLockPolling() {
+        if (pollingExecutor != null) {
+            pollingExecutor.shutdownNow();
+        }
+        pollingExecutor = Executors.newScheduledThreadPool(2);
+        // Use FixedDelay to prevent rapid burst executions when process wakes from cache
+        pollingExecutor.scheduleWithFixedDelay(this::checkForegroundApp, 0, 500, TimeUnit.MILLISECONDS);
+        pollingExecutor.scheduleWithFixedDelay(this::updateNetworkSpeed, 0, 3000, TimeUnit.MILLISECONDS);
+    }
+    
+    private void updateNetworkSpeed() {
+        long currentTime = System.currentTimeMillis();
+        long currentRx = android.net.TrafficStats.getTotalRxBytes();
+        long currentTx = android.net.TrafficStats.getTotalTxBytes();
+
+        if (currentRx == android.net.TrafficStats.UNSUPPORTED || currentTx == android.net.TrafficStats.UNSUPPORTED) {
+            return;
+        }
+
+        if (lastRxBytes != android.net.TrafficStats.UNSUPPORTED && lastTxBytes != android.net.TrafficStats.UNSUPPORTED && lastSpeedCheckTime > 0) {
+            long rxDiff = currentRx - lastRxBytes;
+            long txDiff = currentTx - lastTxBytes;
+            long timeDiff = currentTime - lastSpeedCheckTime;
+
+            if (timeDiff > 0) {
+                long rxBytesPerSec = (rxDiff * 1000) / timeDiff;
+                long txBytesPerSec = (txDiff * 1000) / timeDiff;
+
+                String downSpeed = formatSpeed(rxBytesPerSec);
+                String upSpeed = formatSpeed(txBytesPerSec);
+
+                Notification notification = createForegroundNotification("↓ " + downSpeed + "   ↑ " + upSpeed);
+                if (notificationManager != null) {
+                    notificationManager.notify(FOREGROUND_NOTIFICATION_ID, notification);
+                }
+            }
+        }
+
+        lastRxBytes = currentRx;
+        lastTxBytes = currentTx;
+        lastSpeedCheckTime = currentTime;
+    }
+
+    private String formatSpeed(long bytesPerSec) {
+        if (bytesPerSec < 1024 * 1024) {
+            return (bytesPerSec / 1024) + " KB/s";
+        } else {
+            return String.format(java.util.Locale.US, "%.1f MB/s", bytesPerSec / (1024f * 1024f));
+        }
+    }
+
+    private String lastDetectedPackage = "";
+
+    private void checkForegroundApp() {
+        if (usageStatsManager == null) return;
+
+        long endTime = System.currentTimeMillis();
+        // Always query the last 2000ms. Do NOT use a delta timestamp. 
+        // This ensures if a sub-activity resumes and we miss the exact ms window due to the 500ms delay,
+        // we still catch it in the rolling 2-second net.
+        long startTime = endTime - 2000;
+
+        UsageEvents events = usageStatsManager.queryEvents(startTime, endTime);
+        UsageEvents.Event event = new UsageEvents.Event();
+
+        String latestForegroundApp = null;
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event);
+            if (event.getEventType() == UsageEvents.Event.ACTIVITY_RESUMED) {
+                latestForegroundApp = event.getPackageName();
+            }
+        }
+
+        // Persist the last known foreground app so we evaluate it EVERY 500ms,
+        // even if no new UsageEvents fired in this specific 500ms window.
+        if (latestForegroundApp != null) {
+            lastDetectedPackage = latestForegroundApp;
+        }
+
+        if (!lastDetectedPackage.isEmpty()) {
+            handlePackageChange(lastDetectedPackage);
+        }
+    }
+
+    private void handlePackageChange(String packageName) {
+        packageName = packageName.trim();
+        if (packageName.isEmpty()) return;
+
+        // Ignore events from our own application / lock screen
+        if (packageName.equals(getPackageName()) || packageName.contains("AppLockActivity")) {
+            return;
+        }
+
+        // If switching from a previous locked app to a new package, record leave timestamp
+        if (!currentForegroundApp.isEmpty() && !currentForegroundApp.equals(packageName)) {
+            if (preferenceManager.isPackageLocked(currentForegroundApp)) {
+                leaveTimestamps.put(currentForegroundApp, System.currentTimeMillis());
+            }
+        }
+
+        // STRICT WHITELIST: If package is NOT locked, record foreground app and exit
+        if (!preferenceManager.isPackageLocked(packageName)) {
+            currentForegroundApp = packageName;
+            if (!AppLockActivity.isVisible && !packageName.equals(currentLockingPackage)) {
+                currentLockingPackage = "";
+            }
+            return;
+        }
+
+        // LOCK LOGIC FOR MARKED/LOCKED APPS
+        long currentTime = System.currentTimeMillis();
+        long relockTimeoutMs = preferenceManager.getDelayValue();
+
+        if (packageName.equals(currentForegroundApp) && unlockTimestamps.containsKey(packageName)) {
+            unlockTimestamps.put(packageName, currentTime);
+            leaveTimestamps.remove(packageName);
+            return;
+        }
+
+        boolean isUnlocked = unlockTimestamps.containsKey(packageName);
+        Long lastLeaveTimeObj = leaveTimestamps.get(packageName);
+        long lastLeaveTime = lastLeaveTimeObj != null ? lastLeaveTimeObj : 0L;
+        long awayDuration = lastLeaveTime > 0 ? (currentTime - lastLeaveTime) : Long.MAX_VALUE;
+
+        boolean isExpired = !isUnlocked || (lastLeaveTime > 0 && awayDuration > relockTimeoutMs);
+
+        if (isExpired) {
+            // Aggressively re-assert lock if it was bypassed, suppressed, or destroyed.
+            // Reduced cooldown to 500ms to immediately crush sub-activities pushing the lock screen down.
+            if (!AppLockActivity.isVisible) {
+                if (!packageName.equals(currentLockingPackage) || (currentTime - lastLockLaunchTime > 500)) {
+                    currentLockingPackage = packageName;
+                    lastLockLaunchTime = currentTime;
+                    launchLockScreen(packageName);
+                }
+            }
+        } else {
+            unlockTimestamps.put(packageName, currentTime);
+            leaveTimestamps.remove(packageName);
+            currentForegroundApp = packageName;
+            if (packageName.equals(currentLockingPackage)) {
+                currentLockingPackage = "";
+            }
+        }
+    }
+
+    private void launchLockScreen(String packageName) {
+        Intent intent = new Intent(this, AppLockActivity.class);
+        // Using REORDER_TO_FRONT along with NEW_TASK effectively forces the activity 
+        // to aggressively pop back to the top of the z-order even if Garmin drops a new window.
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | 
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP | 
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | 
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        intent.putExtra("TARGET_PACKAGE", packageName);
+        startActivity(intent);
+    }
+
+    public static void setAppUnlocked(String packageName) {
+        long now = System.currentTimeMillis();
+        unlockTimestamps.put(packageName, now);
+        leaveTimestamps.remove(packageName);
+        currentForegroundApp = packageName;
+        currentLockingPackage = "";
+    }
+    // --- End App Lock Polling Logic ---
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -313,23 +508,30 @@ public class NotificationService extends NotificationListenerService {
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
                 "Notification Forwarder Service",
-                NotificationManager.IMPORTANCE_LOW);
+                NotificationManager.IMPORTANCE_DEFAULT);
         channel.setDescription("Channel for Notification Forwarder Service");
+        channel.setSound(null, null);
+        channel.enableVibration(false);
         if (notificationManager != null) {
             notificationManager.createNotificationChannel(channel);
         }
     }
 
     private Notification createForegroundNotification() {
+        return createForegroundNotification("Service is running");
+    }
+
+    private Notification createForegroundNotification(String contentText) {
         Intent notificationIntent = new Intent(this, MainActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent,
                 PendingIntent.FLAG_IMMUTABLE);
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Notification Forwarder")
-                .setContentText("Service is running")
+                .setContentText(contentText)
                 .setSmallIcon(R.drawable.ic_stat_name)
                 .setContentIntent(pendingIntent)
+                .setOnlyAlertOnce(true) // Prevent vibrating on every update
                 .build();
     }
 

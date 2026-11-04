@@ -13,7 +13,12 @@
 
     <!-- Permission required for App Lock biometric/PIN authentication -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-        <!-- ADD THIS LINE TO ALLOW VISIBILITY OF SETTINGS & INSTALLERS ON ANDROID 11+ -->
+
+    <!-- Permission required for App Lock Usage Stats polling -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+            tools:ignore="ProtectedPermissions" />
+
+    <!-- ADD THIS LINE TO ALLOW VISIBILITY OF SETTINGS & INSTALLERS ON ANDROID 11+ -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
             tools2:ignore="QueryAllPackagesPermission" />
 
@@ -47,7 +52,7 @@
                 android:name=".AppLockActivity"
                 android:theme="@style/Theme.AppCompat.Translucent"
                 android:excludeFromRecents="true"
-                android:launchMode="singleInstance"
+                android:launchMode="singleTask"
                 android:taskAffinity="com.example.notificationforwarder.lock"
                 android:exported="false" />
 
@@ -66,15 +71,8 @@
         <!-- Event-driven App Lock Tracking Service -->
         <service
                 android:name=".AppLockService"
-                android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
                 android:label="Utilities Security Service"
                 android:exported="false">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                    android:name="android.accessibilityservice"
-                    android:resource="@xml/accessibility_service_config" />
         </service>
 
         <!-- Notification Listener Implementation -->

@@ -122,10 +122,10 @@ public class AppSelectionActivity extends AppCompatActivity {
             String pkg = appInfo.packageName;
 
             // 1. Identify Target System Apps (Whitelisted)
-            boolean isWhitelistedSystem = pkg.equals("com.android.settings")
-                    || pkg.equals("com.android.packageinstaller")
-                    || pkg.equals("com.google.android.packageinstaller")
-                    || pkg.contains("samsung.android.packageinstaller")
+            boolean isWhitelistedSystem = java.util.Arrays.asList(
+                    "com.android.settings", "com.android.packageinstaller", 
+                    "com.google.android.packageinstaller"
+            ).contains(pkg) || pkg.contains("samsung.android.packageinstaller")
                     || pkg.contains("samsung.android.samsungpass");
 
             // 2. Categorize based on flags

@@ -25,7 +25,6 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.room.jarjarred.org.antlr.v4.runtime.misc.LogManager;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -37,7 +36,7 @@ import java.util.Set;
 public class MainActivity extends AppCompatActivity {
 
     // View Routing Managers
-    private Button btnTabCreds, btnTabList;
+    private Button btnTabCreds;
     private ScrollView containerCreds;
     private LinearLayout containerAppList;
 
@@ -113,7 +112,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 2. Initialize Internal Layout Page Controls
         btnTabCreds = findViewById(R.id.btn_tab_creds);
-        btnTabList = findViewById(R.id.btn_tab_list);
+        Button btnTabList = findViewById(R.id.btn_tab_list);
         containerCreds = findViewById(R.id.container_creds);
         containerAppList = findViewById(R.id.container_app_list);
 
@@ -234,7 +233,7 @@ public class MainActivity extends AppCompatActivity {
         stopServiceButton.setOnClickListener(v -> stopNotificationService());
 
         btnEnableAppLock.setOnClickListener(v -> {
-            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            Intent intent = new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS);
             startActivity(intent);
         });
 
@@ -302,11 +301,11 @@ public class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (Settings.canDrawOverlays(this)) {
                 overlayStatusTextView.setText("Overlay (Appear on Top): Active");
-                overlayStatusTextView.setTextColor(getResources().getColor(android.R.color.holo_green_dark));
+                overlayStatusTextView.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_green_dark));
                 btnEnableOverlay.setEnabled(false);
             } else {
                 overlayStatusTextView.setText("Overlay (Appear on Top): Inactive");
-                overlayStatusTextView.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
+                overlayStatusTextView.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_red_dark));
                 btnEnableOverlay.setEnabled(true);
             }
         }
@@ -315,28 +314,35 @@ public class MainActivity extends AppCompatActivity {
     private void updateDeviceAdminStatus() {
         if (devicePolicyManager.isAdminActive(compName)) {
             adminStatusTextView.setText("Uninstall Protection: Active");
-            adminStatusTextView.setTextColor(getResources().getColor(android.R.color.holo_green_dark));
+            adminStatusTextView.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_green_dark));
             btnEnableDeviceAdmin.setEnabled(false);
         } else {
             adminStatusTextView.setText("Uninstall Protection: Inactive");
-            adminStatusTextView.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
+            adminStatusTextView.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_red_dark));
             btnEnableDeviceAdmin.setEnabled(true);
         }
     }
 
     private void updateAppLockStatus() {
-        if (isAccessibilityServiceEnabled(this, AppLockService.class)) {
+        if (hasUsageStatsPermission(this)) {
             lockStatusTextView.setText("App Lock: Active");
-            lockStatusTextView.setTextColor(getResources().getColor(android.R.color.holo_green_dark));
+            lockStatusTextView.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_green_dark));
+            // Starting NotificationService now handles both Forwarding AND App Locking automatically
         } else {
             lockStatusTextView.setText("App Lock: Inactive");
-            lockStatusTextView.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
+            lockStatusTextView.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_red_dark));
         }
     }
 
-    private boolean isAccessibilityServiceEnabled(Context context, Class<?> cls) {
-        String s = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        return s != null && s.contains(context.getPackageName() + "/" + cls.getName());
+    private boolean hasUsageStatsPermission(Context context) {
+        android.app.AppOpsManager appOps = (android.app.AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
+        int mode = appOps.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, 
+                android.os.Process.myUid(), context.getPackageName());
+        
+        if (mode == android.app.AppOpsManager.MODE_DEFAULT) {
+            return context.checkCallingOrSelfPermission(android.Manifest.permission.PACKAGE_USAGE_STATS) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        }
+        return mode == android.app.AppOpsManager.MODE_ALLOWED;
     }
 
     private void saveSettings() {
@@ -397,12 +403,12 @@ public class MainActivity extends AppCompatActivity {
     private void updateServiceStatus() {
         if (isServiceRunning(NotificationService.class)) {
             statusTextView.setText("Status: On");
-            statusTextView.setTextColor(getResources().getColor(android.R.color.holo_green_dark));
+            statusTextView.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_green_dark));
             startServiceButton.setEnabled(false);
             stopServiceButton.setEnabled(true);
         } else {
             statusTextView.setText("Status: Off");
-            statusTextView.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
+            statusTextView.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_red_dark));
             startServiceButton.setEnabled(true);
             stopServiceButton.setEnabled(false);
         }
@@ -445,10 +451,10 @@ public class MainActivity extends AppCompatActivity {
             String pkg = appInfo.packageName;
 
             // 1. Identify Target System Apps (Whitelisted)
-            boolean isWhitelistedSystem = pkg.equals("com.android.settings")
-                    || pkg.equals("com.android.packageinstaller")
-                    || pkg.equals("com.google.android.packageinstaller")
-                    || pkg.contains("samsung.android.packageinstaller")
+            boolean isWhitelistedSystem = java.util.Arrays.asList(
+                    "com.android.settings", "com.android.packageinstaller", 
+                    "com.google.android.packageinstaller"
+            ).contains(pkg) || pkg.contains("samsung.android.packageinstaller")
                     || pkg.contains("samsung.android.samsungpass");
 
             // 2. Categorize based on flags

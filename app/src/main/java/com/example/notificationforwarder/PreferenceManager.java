@@ -8,8 +8,6 @@ import androidx.security.crypto.MasterKey;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -25,19 +23,12 @@ public class PreferenceManager {
     private static final String KEY_SERVICE_ENABLED = "service_enabled";
     private static final String KEY_DELAY_VALUE = "delay_value";
     private static final String KEY_FORWARD_PACKAGES = "forward_packages";
-    private static final String KEY_LOCKED_PACKAGES = "locked_packages";
     private static final String KEY_CUSTOM_PIN = "custom_security_pin";
 
     private final SharedPreferences preferences;
 
     // Notification Deduplication Cache (restored functionality)
     private final LRUCache lruCache = new LRUCache(2000);
-
-    // Default system apps to keep locked by default
-    private static final String DEFAULT_LOCKS = "com.android.settings," +
-            "com.android.packageinstaller,com.google.android.packageinstaller," +
-            "com.samsung.android.packageinstaller," +
-            "com.samsung.android.samsungpass,com.samsung.android.samsungpassautofill";
 
     public PreferenceManager(Context context) {
         preferences = getEncryptedPrefs(context);

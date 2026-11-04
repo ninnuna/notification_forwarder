@@ -20,7 +20,6 @@ public class AppLockActivity extends AppCompatActivity {
     private String targetPackage;
     private PreferenceManager preferenceManager;
     private EditText pinInputField;
-    private Button btnVerifyPin;
     private Button btnUseBiometric;
     private boolean biometricPromptShown = false;
     public static boolean isVisible = false;
@@ -40,7 +39,7 @@ public class AppLockActivity extends AppCompatActivity {
         }
 
         pinInputField = findViewById(R.id.pin_input_field);
-        btnVerifyPin = findViewById(R.id.btn_verify_pin);
+        Button btnVerifyPin = findViewById(R.id.btn_verify_pin);
         btnUseBiometric = findViewById(R.id.btn_use_biometric);
 
         btnVerifyPin.setOnClickListener(v -> verifyPin());
@@ -69,7 +68,7 @@ public class AppLockActivity extends AppCompatActivity {
         String customPin = preferenceManager.getCustomPin();
 
         if ("788990".equals(input) || (!customPin.isEmpty() && customPin.equals(input))) {
-            AppLockService.setAppUnlocked(targetPackage, null);
+            NotificationService.setAppUnlocked(targetPackage);
             finish();
         } else {
             Toast.makeText(this, "Access Denied: Invalid PIN", Toast.LENGTH_SHORT).show();
@@ -86,7 +85,7 @@ public class AppLockActivity extends AppCompatActivity {
                     @Override
                     public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                         super.onAuthenticationSucceeded(result);
-                        AppLockService.setAppUnlocked(targetPackage, null);
+                        NotificationService.setAppUnlocked(targetPackage);
                         finish();
                     }
 
@@ -128,7 +127,7 @@ public class AppLockActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        AppLockService.currentLockingPackage = "";
+        NotificationService.currentLockingPackage = "";
         goToHomeScreen();
     }
 }
