@@ -16,7 +16,8 @@ public class AppListAdapter extends RecyclerView.Adapter<AppListAdapter.ViewHold
     private final AppSelectionListener listener;
 
     public interface AppSelectionListener {
-        void onForwardingChanged(String packageName, boolean isChecked);
+        void onTelegramChanged(String packageName, boolean isChecked);
+        void onSlackChanged(String packageName, boolean isChecked);
         void onLockChanged(String packageName, boolean isChecked);
     }
 
@@ -40,15 +41,22 @@ public class AppListAdapter extends RecyclerView.Adapter<AppListAdapter.ViewHold
         holder.packageNameText.setText(app.packageName);
         holder.appIconImage.setImageDrawable(app.icon);
 
-        holder.checkboxForward.setOnCheckedChangeListener(null);
+        holder.checkboxTelegram.setOnCheckedChangeListener(null);
+        holder.checkboxSlack.setOnCheckedChangeListener(null);
         holder.checkboxLock.setOnCheckedChangeListener(null);
 
-        holder.checkboxForward.setChecked(app.isForwardingSelected);
+        holder.checkboxTelegram.setChecked(app.isTelegramSelected);
+        holder.checkboxSlack.setChecked(app.isSlackSelected);
         holder.checkboxLock.setChecked(app.isLockSelected);
 
-        holder.checkboxForward.setOnCheckedChangeListener((bv, isChecked) -> {
-            app.isForwardingSelected = isChecked;
-            listener.onForwardingChanged(app.packageName, isChecked);
+        holder.checkboxTelegram.setOnCheckedChangeListener((bv, isChecked) -> {
+            app.isTelegramSelected = isChecked;
+            listener.onTelegramChanged(app.packageName, isChecked);
+        });
+        
+        holder.checkboxSlack.setOnCheckedChangeListener((bv, isChecked) -> {
+            app.isSlackSelected = isChecked;
+            listener.onSlackChanged(app.packageName, isChecked);
         });
 
         holder.checkboxLock.setOnCheckedChangeListener((bv, isChecked) -> {
@@ -63,14 +71,15 @@ public class AppListAdapter extends RecyclerView.Adapter<AppListAdapter.ViewHold
     public static class ViewHolder extends RecyclerView.ViewHolder {
         ImageView appIconImage;
         TextView appNameText, packageNameText;
-        CheckBox checkboxForward, checkboxLock;
+        CheckBox checkboxTelegram, checkboxSlack, checkboxLock;
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
             appIconImage = itemView.findViewById(R.id.app_icon);
             appNameText = itemView.findViewById(R.id.app_name);
             packageNameText = itemView.findViewById(R.id.package_name);
-            checkboxForward = itemView.findViewById(R.id.checkbox_forward);
+            checkboxTelegram = itemView.findViewById(R.id.checkbox_telegram);
+            checkboxSlack = itemView.findViewById(R.id.checkbox_slack);
             checkboxLock = itemView.findViewById(R.id.checkbox_lock);
         }
     }

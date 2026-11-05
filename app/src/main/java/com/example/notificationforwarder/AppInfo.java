@@ -6,15 +6,17 @@ public class AppInfo {
     public String appName;
     public String packageName;
     public Drawable icon;
-    public boolean isForwardingSelected;
+    public boolean isTelegramSelected;
+    public boolean isSlackSelected;
     public boolean isLockSelected;
     public int appCategory;
 
-    public AppInfo(String appName, String packageName, Drawable icon, boolean isForwardingSelected, boolean isLockSelected) {
+    public AppInfo(String appName, String packageName, Drawable icon, boolean isTelegramSelected, boolean isSlackSelected, boolean isLockSelected) {
         this.appName = appName;
         this.packageName = packageName;
         this.icon = icon;
-        this.isForwardingSelected = isForwardingSelected;
+        this.isTelegramSelected = isTelegramSelected;
+        this.isSlackSelected = isSlackSelected;
         this.isLockSelected = isLockSelected;
     }
 }

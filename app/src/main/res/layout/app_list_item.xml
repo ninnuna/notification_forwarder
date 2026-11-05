@@ -52,10 +52,17 @@
             android:orientation="horizontal">
 
         <CheckBox
-                android:id="@+id/checkbox_forward"
+                android:id="@+id/checkbox_telegram"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Fwd"
+                android:text="TG"
+                android:textSize="10sp" />
+
+        <CheckBox
+                android:id="@+id/checkbox_slack"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Slk"
                 android:textSize="10sp" />
 
         <CheckBox

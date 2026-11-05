@@ -297,8 +297,9 @@ public class NotificationService extends NotificationListenerService {
             if (!preferenceManager.isForwardSecureFolderEnabled()) return;
             profileLabel = "Secure Folder";
         } else {
-            // "p" Profile: Strict check against the App Selection list
-            if (!preferenceManager.getSelectedPackages().contains(pkgName)) {
+            // "p" Profile: Check against the App Selection list
+            if (!preferenceManager.getTelegramPackages().contains(pkgName) &&
+                !preferenceManager.getSlackPackages().contains(pkgName)) {
                 return;
             }
         }
@@ -319,43 +320,43 @@ public class NotificationService extends NotificationListenerService {
         String text = charText == null ? "" : charText.toString();
         String appName = getApplicationName(context, sbn, pkgName);
 
+        boolean forwardToTelegram = preferenceManager.getTelegramPackages().contains(pkgName);
+        boolean forwardToSlack = preferenceManager.getSlackPackages().contains(pkgName);
+
+        if (!forwardToTelegram && !forwardToSlack) return;
+
+        // 4. Keyword Filtering
         String lowerTitle = title.toLowerCase();
         String lowerText = text.toLowerCase();
-        boolean isWhatsApp = appName.toLowerCase().contains("whatsapp");
 
-        // 4. Dynamic Keyword Filtering for WhatsApp
-        boolean hasTelegramKeywords = containsKeyword(lowerTitle, lowerText, preferenceManager.getParsedTelegramKeywords());
-        boolean hasSlackKeywords = containsKeyword(lowerTitle, lowerText, preferenceManager.getParsedSlackKeywords());
+        boolean tgKeywordsEmpty = preferenceManager.getParsedTelegramKeywords().isEmpty();
+        boolean slackKeywordsEmpty = preferenceManager.getParsedSlackKeywords().isEmpty();
 
-        // If it's WhatsApp and it matches neither list, drop it.
-        if (isWhatsApp && !hasTelegramKeywords && !hasSlackKeywords) {
-            return;
-        }
+        boolean tgKeywordMatch = tgKeywordsEmpty || containsKeyword(lowerTitle, lowerText, preferenceManager.getParsedTelegramKeywords());
+        boolean slackKeywordMatch = slackKeywordsEmpty || containsKeyword(lowerTitle, lowerText, preferenceManager.getParsedSlackKeywords());
 
-        // 5. Channel Determination & Deduplication
-        String channel;
-        if (isWhatsApp && !"w".equals(profile)) {
-            // Forward to Telegram if telegram keywords matched and it's not a work profile
-            if (hasTelegramKeywords ) {
-                channel = "telegram";
-            } else {
-                channel = "slack";
-            }
-        } else {
-            channel = "slack";
-        }
-        
+        // If it matches Telegram keywords, block Slack routing unless Slack explicitly matches too.
+        // If the Slack list is empty, default it to true, but NEVER allow it to piggyback on Telegram's match.
+        boolean shouldSendTg = forwardToTelegram && tgKeywordMatch;
+        boolean shouldSendSlack = forwardToSlack && (!slackKeywordsEmpty ? slackKeywordMatch : !tgKeywordMatch);
+
+        if (!shouldSendTg && !shouldSendSlack) return;
+
+        // 5. Deduplication
         long lastSent = preferenceManager.getLruCache().get(text.hashCode());
 
         if (lastSent == -1) {
-            // 6. Metadata Construction with Profile Info
-            String senderInfo = String.format("-- %s [%s] @ %s",
-                    appName,
-                    profileLabel,
-                    epochToTimeStamp(notification.when));
+            String senderInfo = String.format("-- %s [%s] @ %s", appName, profileLabel, epochToTimeStamp(notification.when));
 
-            sendMessage(channel, title, text, senderInfo, appName,
-                    pkgName.toLowerCase(), sbn.getTag(), sbn.getId(), profile);
+            // 6. Dynamic Channel Routing
+            if (shouldSendTg) {
+                String tgChannel = getChannelKey("telegram", pkgName, profile);
+                sendMessage(tgChannel, title, text, senderInfo, appName, pkgName.toLowerCase(), sbn.getTag(), sbn.getId(), profile);
+            }
+            if (shouldSendSlack) {
+                String slackChannel = getChannelKey("slack", pkgName, profile);
+                sendMessage(slackChannel, title, text, senderInfo, appName, pkgName.toLowerCase(), sbn.getTag(), sbn.getId(), profile);
+            }
 
             preferenceManager.getLruCache().put(text.hashCode(), notification.when);
         }
@@ -428,14 +429,24 @@ public class NotificationService extends NotificationListenerService {
         // NEW: Automatically write to device storage, segregated by key
         writeMessageToStorage(key, String.valueOf(title), text, senderInfo);
 
+        // Make sure we parse tokens if they haven't been loaded yet.
+        if (tokenMap == null || tokenMap.isEmpty()) {
+            tokenMap = parseWebTokens(tokens);
+        }
+
         String webToken = tokenMap.getOrDefault(key, "");
         if (TextUtils.isEmpty(webToken)) {
-            Log.e(TAG, "No valid token found for app: " + appName);
+            Log.e(TAG, "No valid token found for channel: " + channel + " with key: " + key);
             return;
         }
 
         // 1. Determine the sender cleanly before jumping into the background thread
-        MessageHelper sender = "telegram".equals(channel) ? telegramHelper : slackHelper;
+        MessageHelper sender;
+        if (key.equals(preferenceManager.getParsedRoutingConfig().personalTgKey) || channel.equals("telegram")) {
+            sender = telegramHelper;
+        } else {
+            sender = slackHelper;
+        }
 
         // 2. Process notification in a background thread
         executorService.execute(() ->
@@ -473,27 +484,22 @@ public class NotificationService extends NotificationListenerService {
     }
 
     @NonNull
-    private static String getChannelKey(String channel, String packageName, String profile) {
-        if ("w".equals(profile)) return "client";
+    private String getChannelKey(String channel, String packageName, String profile) {
+        PreferenceManager.RoutingConfig config = preferenceManager.getParsedRoutingConfig();
+        
+        if ("w".equals(profile)) return config.workKey;
 
-        if ("p".equals(profile) && "telegram".equals(channel)) return "colab";
-
-        if ("s".equals(profile)) {
-            // Group package names into lists for fast, clean lookups
-            if (List.of("com.google.android.gm", "com.google.android.calendar",
-                            "com.google.android.apps.dynamite", "com.google.android.apps.tachyon")
-                    .contains(packageName)) {
-                return "ttn";
-            }
-
-            if (List.of("com.microsoft.teams", "com.microsoft.office.outlook",
-                            "com.duosecurity.duomobile", "com.azure.authenticator")
-                    .contains(packageName)) {
-                return "client1";
-            }
+        if ("p".equals(profile)) {
+            if ("telegram".equals(channel)) return config.personalTgKey;
+            if ("slack".equals(channel)) return config.personalSlackKey;
         }
 
-        return "other";
+        if ("s".equals(profile)) {
+            if (config.s1Pkgs.contains(packageName)) return config.s1Key;
+            if (config.s2Pkgs.contains(packageName)) return config.s2Key;
+        }
+
+        return config.defaultKey;
     }
 
     /** @noinspection deprecation*/

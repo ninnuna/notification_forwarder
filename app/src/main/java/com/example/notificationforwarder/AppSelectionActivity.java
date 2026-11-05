@@ -28,7 +28,8 @@ public class AppSelectionActivity extends AppCompatActivity {
     private Button btnSaveList;
 
     private List<AppInfo> appList = new ArrayList<>();
-    private Set<String> selectedPackages = new HashSet<>();
+    private Set<String> telegramPackages = new HashSet<>();
+    private Set<String> slackPackages = new HashSet<>();
     private Set<String> lockedPackages = new HashSet<>();
     private PreferenceManager preferenceManager;
 
@@ -47,9 +48,15 @@ public class AppSelectionActivity extends AppCompatActivity {
 
         appListAdapter = new AppListAdapter(appList, new AppListAdapter.AppSelectionListener() {
             @Override
-            public void onForwardingChanged(String packageName, boolean isChecked) {
-                if (isChecked) selectedPackages.add(packageName);
-                else selectedPackages.remove(packageName);
+            public void onTelegramChanged(String packageName, boolean isChecked) {
+                if (isChecked) telegramPackages.add(packageName);
+                else telegramPackages.remove(packageName);
+            }
+
+            @Override
+            public void onSlackChanged(String packageName, boolean isChecked) {
+                if (isChecked) slackPackages.add(packageName);
+                else slackPackages.remove(packageName);
             }
 
             @Override
@@ -61,17 +68,20 @@ public class AppSelectionActivity extends AppCompatActivity {
         appListRecyclerView.setAdapter(appListAdapter);
 
         btnSaveList.setOnClickListener(v -> {
-            preferenceManager.setSelectedPackages(TextUtils.join(",", selectedPackages));
+            preferenceManager.setTelegramPackages(TextUtils.join(",", telegramPackages));
+            preferenceManager.setSlackPackages(TextUtils.join(",", slackPackages));
             preferenceManager.setLockedPackages(new ArrayList<>(lockedPackages));
             Toast.makeText(this, "Changes saved successfully", Toast.LENGTH_SHORT).show();
             finish();
         });
 
         btnClearList.setOnClickListener(v -> {
-            selectedPackages.clear();
+            telegramPackages.clear();
+            slackPackages.clear();
             lockedPackages.clear();
             for (AppInfo app : appList) {
-                app.isForwardingSelected = false;
+                app.isTelegramSelected = false;
+                app.isSlackSelected = false;
                 app.isLockSelected = false;
             }
             appListAdapter.notifyDataSetChanged();
@@ -97,11 +107,12 @@ public class AppSelectionActivity extends AppCompatActivity {
     }
 
     private void loadSelectedPackages() {
-        String csv = preferenceManager.getSelectedPackages();
-        selectedPackages.clear();
-        if (!TextUtils.isEmpty(csv)) {
-            selectedPackages.addAll(Arrays.asList(csv.split(",")));
-        }
+        String telegramCsv = preferenceManager.getTelegramPackages();
+        String slackCsv = preferenceManager.getSlackPackages();
+        telegramPackages.clear();
+        slackPackages.clear();
+        if (!TextUtils.isEmpty(telegramCsv)) telegramPackages.addAll(Arrays.asList(telegramCsv.split(",")));
+        if (!TextUtils.isEmpty(slackCsv)) slackPackages.addAll(Arrays.asList(slackCsv.split(",")));
     }
 
     private void loadLockedPackages() {
@@ -137,10 +148,11 @@ public class AppSelectionActivity extends AppCompatActivity {
                 String appName = pm.getApplicationLabel(appInfo).toString();
                 Drawable icon = appInfo.loadIcon(pm);
 
-                boolean isForwarding = selectedPackages.contains(pkg);
+                boolean isTelegram = telegramPackages.contains(pkg);
+                boolean isSlack = slackPackages.contains(pkg);
                 boolean isLocked = lockedPackages.contains(pkg);
 
-                AppInfo info = new AppInfo(appName, pkg, icon, isForwarding, isLocked);
+                AppInfo info = new AppInfo(appName, pkg, icon, isTelegram, isSlack, isLocked);
 
                 // Assign Category Priority: 1 = User, 2 = Updated System, 3 = Pure System (Whitelisted)
                 if (isUserApp) {
@@ -158,8 +170,8 @@ public class AppSelectionActivity extends AppCompatActivity {
         // --- ENHANCED SORTING LOGIC ---
         appList.sort((a, b) -> {
             // Priority 1: Active (Checked) apps always at the very top
-            boolean aActive = a.isForwardingSelected || a.isLockSelected;
-            boolean bActive = b.isForwardingSelected || b.isLockSelected;
+            boolean aActive = a.isTelegramSelected || a.isSlackSelected || a.isLockSelected;
+            boolean bActive = b.isTelegramSelected || b.isSlackSelected || b.isLockSelected;
             if (aActive != bActive) {
                 return aActive ? -1 : 1;
             }

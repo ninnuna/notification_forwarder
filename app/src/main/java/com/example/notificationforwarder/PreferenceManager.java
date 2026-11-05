@@ -9,8 +9,10 @@ import androidx.security.crypto.MasterKey;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -116,13 +118,23 @@ public class PreferenceManager {
     }
 
     // --- Notification Forwarding Logic ---
+    private static final String KEY_TELEGRAM_PACKAGES = "telegram_forward_packages";
+    private static final String KEY_SLACK_PACKAGES = "slack_forward_packages";
 
-    public String getSelectedPackages() {
-        return preferences.getString(KEY_FORWARD_PACKAGES, "");
+    public String getTelegramPackages() {
+        return preferences.getString(KEY_TELEGRAM_PACKAGES, "");
     }
 
-    public void setSelectedPackages(String csv) {
-        preferences.edit().putString(KEY_FORWARD_PACKAGES, csv).apply();
+    public void setTelegramPackages(String csv) {
+        preferences.edit().putString(KEY_TELEGRAM_PACKAGES, csv).apply();
+    }
+    
+    public String getSlackPackages() {
+        return preferences.getString(KEY_SLACK_PACKAGES, "");
+    }
+
+    public void setSlackPackages(String csv) {
+        preferences.edit().putString(KEY_SLACK_PACKAGES, csv).apply();
     }
 
     // --- Keyword Filtering ---
@@ -179,6 +191,75 @@ public class PreferenceManager {
 
     public void setSlackKeywords(String keywords) {
         preferences.edit().putString(KEY_SLACK_KEYWORDS, keywords).apply();
+    }
+
+    // --- Dynamic Routing Config Logic ---
+    private static final String KEY_ROUTING_CONFIG = "routing_config_v2";
+
+    public String getRoutingConfig() {
+        return preferences.getString(KEY_ROUTING_CONFIG, 
+                "w=client; p_tg=colab; p_slk=other; s1=ttn|dummy; s2=client1|dummy; default=other");
+    }
+
+    public void setRoutingConfig(String config) {
+        preferences.edit().putString(KEY_ROUTING_CONFIG, config).apply();
+    }
+
+    public static class RoutingConfig {
+        public String workKey = "client";
+        public String personalTgKey = "colab";
+        public String personalSlackKey = "other";
+        public String s1Key = "ttn";
+        public Set<String> s1Pkgs = new HashSet<>();
+        public String s2Key = "client1";
+        public Set<String> s2Pkgs = new HashSet<>();
+        public String defaultKey = "other";
+    }
+
+    private String lastRawRoutingConfig = null;
+    private RoutingConfig parsedRoutingConfig = new RoutingConfig();
+
+    public RoutingConfig getParsedRoutingConfig() {
+        String raw = getRoutingConfig();
+        if (!raw.equals(lastRawRoutingConfig)) {
+            lastRawRoutingConfig = raw;
+            parsedRoutingConfig = new RoutingConfig(); // reset to defaults
+            
+            if (!raw.isEmpty()) {
+                for (String rule : raw.split(";")) {
+                    String[] parts = rule.trim().split("=");
+                    if (parts.length == 2) {
+                        String ruleName = parts[0].trim().toLowerCase();
+                        String ruleValue = parts[1].trim();
+                        
+                        if (ruleName.equals("w")) parsedRoutingConfig.workKey = ruleValue;
+                        else if (ruleName.equals("p_tg")) parsedRoutingConfig.personalTgKey = ruleValue;
+                        else if (ruleName.equals("p_slk")) parsedRoutingConfig.personalSlackKey = ruleValue;
+                        else if (ruleName.equals("default")) parsedRoutingConfig.defaultKey = ruleValue;
+                        else if (ruleName.equals("s1") || ruleName.equals("s2")) {
+                            String[] valParts = ruleValue.split("\\|");
+                            if (valParts.length > 0) {
+                                String key = valParts[0].trim();
+                                Set<String> pkgs = new HashSet<>();
+                                if (valParts.length > 1) {
+                                    for (String p : valParts[1].split(",")) {
+                                        pkgs.add(p.trim().toLowerCase());
+                                    }
+                                }
+                                if (ruleName.equals("s1")) {
+                                    parsedRoutingConfig.s1Key = key;
+                                    parsedRoutingConfig.s1Pkgs = pkgs;
+                                } else {
+                                    parsedRoutingConfig.s2Key = key;
+                                    parsedRoutingConfig.s2Pkgs = pkgs;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return parsedRoutingConfig;
     }
 
     // --- General Settings ---

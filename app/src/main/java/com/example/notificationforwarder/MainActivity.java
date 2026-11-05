@@ -41,7 +41,7 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout containerAppList;
 
     // Credentials Setup UI Elements
-    private EditText webTokenEditText, delayValueText, edtNewPin, telegramKeywordsText, slackKeywordsText;
+    private EditText webTokenEditText, delayValueText, edtNewPin, telegramKeywordsText, slackKeywordsText, routingConfigText;
     private Button saveButton, testButton, startServiceButton, stopServiceButton, btnUpdatePin;
     private Button btnEnableAppLock, btnEnableDeviceAdmin, btnEnableOverlay;
     private TextView statusTextView, lockStatusTextView, adminStatusTextView, overlayStatusTextView;
@@ -64,7 +64,8 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView appListRecyclerView;
     private AppListAdapter appListAdapter;
     private List<AppInfo> appList = new ArrayList<>();
-    private Set<String> selectedPackages = new HashSet<>();
+    private Set<String> telegramPackages = new HashSet<>();
+    private Set<String> slackPackages = new HashSet<>();
     private Set<String> lockedPackages = new HashSet<>();
     private CheckBox cbForwardWork, cbForwardSecure;
 
@@ -141,6 +142,7 @@ public class MainActivity extends AppCompatActivity {
         
         telegramKeywordsText = findViewById(R.id.telegram_keywords_edit_text);
         slackKeywordsText = findViewById(R.id.slack_keywords_edit_text);
+        routingConfigText = findViewById(R.id.routing_config_edit_text);
 
         btnEnableAppLock = findViewById(R.id.btn_enable_app_lock);
         lockStatusTextView = findViewById(R.id.lock_status_text_view);
@@ -186,28 +188,29 @@ public class MainActivity extends AppCompatActivity {
         // Connect the list adapter to update our temporary isolated memory buffers
         appListAdapter = new AppListAdapter(appList, new AppListAdapter.AppSelectionListener() {
             @Override
-            public void onForwardingChanged(String packageName, boolean isChecked) {
-                if (isChecked) {
-                    selectedPackages.add(packageName);
-                } else {
-                    selectedPackages.remove(packageName);
-                }
+            public void onTelegramChanged(String packageName, boolean isChecked) {
+                if (isChecked) telegramPackages.add(packageName);
+                else telegramPackages.remove(packageName);
+            }
+
+            @Override
+            public void onSlackChanged(String packageName, boolean isChecked) {
+                if (isChecked) slackPackages.add(packageName);
+                else slackPackages.remove(packageName);
             }
 
             @Override
             public void onLockChanged(String packageName, boolean isChecked) {
-                if (isChecked) {
-                    lockedPackages.add(packageName);
-                } else {
-                    lockedPackages.remove(packageName);
-                }
+                if (isChecked) lockedPackages.add(packageName);
+                else lockedPackages.remove(packageName);
             }
         });
         appListRecyclerView.setAdapter(appListAdapter);
 
         // Transactional commit changes to system preferences
         btnSaveList.setOnClickListener(v -> {
-            preferenceManager.setSelectedPackages(TextUtils.join(",", selectedPackages));
+            preferenceManager.setTelegramPackages(TextUtils.join(",", telegramPackages));
+            preferenceManager.setSlackPackages(TextUtils.join(",", slackPackages));
             preferenceManager.setLockedPackages(new ArrayList<>(lockedPackages));
             Toast.makeText(this, "Changes committed successfully", Toast.LENGTH_SHORT).show();
             loadInstalledApps();
@@ -215,10 +218,12 @@ public class MainActivity extends AppCompatActivity {
 
         // Wipes memory buffers without committing changes until explicitly saved
         btnClearList.setOnClickListener(v -> {
-            selectedPackages.clear();
+            telegramPackages.clear();
+            slackPackages.clear();
             lockedPackages.clear();
             for (AppInfo app : appList) {
-                app.isForwardingSelected = false;
+                app.isTelegramSelected = false;
+                app.isSlackSelected = false;
                 app.isLockSelected = false;
             }
             appListAdapter.notifyDataSetChanged();
@@ -233,6 +238,7 @@ public class MainActivity extends AppCompatActivity {
         
         telegramKeywordsText.setText(preferenceManager.getTelegramKeywords());
         slackKeywordsText.setText(preferenceManager.getSlackKeywords());
+        routingConfigText.setText(preferenceManager.getRoutingConfig());
 
         saveButton.setOnClickListener(v -> saveSettings());
         startServiceButton.setOnClickListener(v -> startNotificationService());
@@ -358,6 +364,7 @@ public class MainActivity extends AppCompatActivity {
         String delay = delayValueText.getText().toString().trim();
         String telegramKeywords = telegramKeywordsText.getText().toString().trim();
         String slackKeywords = slackKeywordsText.getText().toString().trim();
+        String routingConfig = routingConfigText.getText().toString().trim();
         
         if (TextUtils.isEmpty(token)) {
             Toast.makeText(this, "Please enter Web Token", Toast.LENGTH_SHORT).show();
@@ -367,6 +374,7 @@ public class MainActivity extends AppCompatActivity {
         preferenceManager.setDelayValue(delay);
         preferenceManager.setTelegramKeywords(telegramKeywords);
         preferenceManager.setSlackKeywords(slackKeywords);
+        preferenceManager.setRoutingConfig(routingConfig);
         Toast.makeText(this, "Settings saved successfully", Toast.LENGTH_SHORT).show();
     }
 
@@ -426,15 +434,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadSelectedPackages() {
-        String csv = preferenceManager.getSelectedPackages();
-        selectedPackages.clear();
-        if (!TextUtils.isEmpty(csv)) {
-            // FIX: Trim whitespace from packages to ensure matching works correctly
-            for (String pkg : csv.split(",")) {
+        String telegramCsv = preferenceManager.getTelegramPackages();
+        String slackCsv = preferenceManager.getSlackPackages();
+        telegramPackages.clear();
+        slackPackages.clear();
+        
+        if (!TextUtils.isEmpty(telegramCsv)) {
+            for (String pkg : telegramCsv.split(",")) {
                 String trimmed = pkg.trim();
-                if (!trimmed.isEmpty()) {
-                    selectedPackages.add(trimmed);
-                }
+                if (!trimmed.isEmpty()) telegramPackages.add(trimmed);
+            }
+        }
+        
+        if (!TextUtils.isEmpty(slackCsv)) {
+            for (String pkg : slackCsv.split(",")) {
+                String trimmed = pkg.trim();
+                if (!trimmed.isEmpty()) slackPackages.add(trimmed);
             }
         }
     }
@@ -477,10 +492,11 @@ public class MainActivity extends AppCompatActivity {
                 String appName = pm.getApplicationLabel(appInfo).toString();
                 Drawable icon = appInfo.loadIcon(pm);
 
-                boolean isForwarding = selectedPackages.contains(pkg);
+                boolean isTelegram = telegramPackages.contains(pkg);
+                boolean isSlack = slackPackages.contains(pkg);
                 boolean isLocked = lockedPackages.contains(pkg);
 
-                AppInfo info = new AppInfo(appName, pkg, icon, isForwarding, isLocked);
+                AppInfo info = new AppInfo(appName, pkg, icon, isTelegram, isSlack, isLocked);
 
                 // Assign Category Priority: 1 = User, 2 = Updated System, 3 = Pure System (Whitelisted)
                 if (isUserApp) {
@@ -498,8 +514,8 @@ public class MainActivity extends AppCompatActivity {
         // --- ENHANCED SORTING LOGIC ---
         appList.sort((a, b) -> {
             // Priority 1: Active (Checked) apps always at the very top
-            boolean aActive = a.isForwardingSelected || a.isLockSelected;
-            boolean bActive = b.isForwardingSelected || b.isLockSelected;
+            boolean aActive = a.isTelegramSelected || a.isSlackSelected || a.isLockSelected;
+            boolean bActive = b.isTelegramSelected || b.isSlackSelected || b.isLockSelected;
             if (aActive != bActive) {
                 return aActive ? -1 : 1;
             }
