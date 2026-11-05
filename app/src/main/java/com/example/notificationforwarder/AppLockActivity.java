@@ -27,7 +27,6 @@ public class AppLockActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        isVisible = true;
         setContentView(R.layout.activity_app_lock);
 
         preferenceManager = new PreferenceManager(this);
@@ -47,8 +46,14 @@ public class AppLockActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onDestroy() {
-        super.onDestroy();
+    protected void onResume() {
+        super.onResume();
+        isVisible = true;
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
         isVisible = false;
     }
 

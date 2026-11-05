@@ -8,6 +8,7 @@ import androidx.security.crypto.MasterKey;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -122,6 +123,62 @@ public class PreferenceManager {
 
     public void setSelectedPackages(String csv) {
         preferences.edit().putString(KEY_FORWARD_PACKAGES, csv).apply();
+    }
+
+    // --- Keyword Filtering ---
+    private static final String KEY_TELEGRAM_KEYWORDS = "telegram_keywords";
+    private static final String KEY_SLACK_KEYWORDS = "slack_keywords";
+
+    private String lastRawTelegram = null;
+    private List<String> parsedTelegram = new ArrayList<>();
+
+    public String getTelegramKeywords() {
+        return preferences.getString(KEY_TELEGRAM_KEYWORDS, "");
+    }
+
+    public List<String> getParsedTelegramKeywords() {
+        String raw = getTelegramKeywords();
+        if (!raw.equals(lastRawTelegram)) {
+            lastRawTelegram = raw;
+            parsedTelegram.clear();
+            if (!raw.isEmpty()) {
+                for (String kw : raw.split(",")) {
+                    String k = kw.trim().toLowerCase();
+                    if (!k.isEmpty()) parsedTelegram.add(k);
+                }
+            }
+        }
+        return parsedTelegram;
+    }
+
+    public void setTelegramKeywords(String keywords) {
+        preferences.edit().putString(KEY_TELEGRAM_KEYWORDS, keywords).apply();
+    }
+
+    private String lastRawSlack = null;
+    private List<String> parsedSlack = new ArrayList<>();
+
+    public String getSlackKeywords() {
+        return preferences.getString(KEY_SLACK_KEYWORDS, "");
+    }
+
+    public List<String> getParsedSlackKeywords() {
+        String raw = getSlackKeywords();
+        if (!raw.equals(lastRawSlack)) {
+            lastRawSlack = raw;
+            parsedSlack.clear();
+            if (!raw.isEmpty()) {
+                for (String kw : raw.split(",")) {
+                    String k = kw.trim().toLowerCase();
+                    if (!k.isEmpty()) parsedSlack.add(k);
+                }
+            }
+        }
+        return parsedSlack;
+    }
+
+    public void setSlackKeywords(String keywords) {
+        preferences.edit().putString(KEY_SLACK_KEYWORDS, keywords).apply();
     }
 
     // --- General Settings ---

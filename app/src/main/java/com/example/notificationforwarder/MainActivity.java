@@ -41,7 +41,7 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout containerAppList;
 
     // Credentials Setup UI Elements
-    private EditText webTokenEditText, delayValueText, edtNewPin;
+    private EditText webTokenEditText, delayValueText, edtNewPin, telegramKeywordsText, slackKeywordsText;
     private Button saveButton, testButton, startServiceButton, stopServiceButton, btnUpdatePin;
     private Button btnEnableAppLock, btnEnableDeviceAdmin, btnEnableOverlay;
     private TextView statusTextView, lockStatusTextView, adminStatusTextView, overlayStatusTextView;
@@ -138,6 +138,9 @@ public class MainActivity extends AppCompatActivity {
         delayValueText = findViewById(R.id.delay_edit_text);
         edtNewPin = findViewById(R.id.edt_new_pin);
         btnUpdatePin = findViewById(R.id.btn_update_pin);
+        
+        telegramKeywordsText = findViewById(R.id.telegram_keywords_edit_text);
+        slackKeywordsText = findViewById(R.id.slack_keywords_edit_text);
 
         btnEnableAppLock = findViewById(R.id.btn_enable_app_lock);
         lockStatusTextView = findViewById(R.id.lock_status_text_view);
@@ -227,6 +230,9 @@ public class MainActivity extends AppCompatActivity {
             webTokenEditText.setText(preferenceManager.getWebToken());
         }
         delayValueText.setText(String.format("%d", preferenceManager.getDelayValue()));
+        
+        telegramKeywordsText.setText(preferenceManager.getTelegramKeywords());
+        slackKeywordsText.setText(preferenceManager.getSlackKeywords());
 
         saveButton.setOnClickListener(v -> saveSettings());
         startServiceButton.setOnClickListener(v -> startNotificationService());
@@ -350,12 +356,17 @@ public class MainActivity extends AppCompatActivity {
         preferenceManager.setForwardSecureFolder(cbForwardSecure.isChecked());
         String token = webTokenEditText.getText().toString().trim();
         String delay = delayValueText.getText().toString().trim();
+        String telegramKeywords = telegramKeywordsText.getText().toString().trim();
+        String slackKeywords = slackKeywordsText.getText().toString().trim();
+        
         if (TextUtils.isEmpty(token)) {
             Toast.makeText(this, "Please enter Web Token", Toast.LENGTH_SHORT).show();
             return;
         }
         preferenceManager.setWebToken(token);
         preferenceManager.setDelayValue(delay);
+        preferenceManager.setTelegramKeywords(telegramKeywords);
+        preferenceManager.setSlackKeywords(slackKeywords);
         Toast.makeText(this, "Settings saved successfully", Toast.LENGTH_SHORT).show();
     }
 

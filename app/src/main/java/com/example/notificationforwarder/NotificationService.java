@@ -40,7 +40,7 @@ import android.app.usage.UsageStatsManager;
 public class NotificationService extends NotificationListenerService {
 
     private static final String TAG = "NotificationService";
-    private static final String CHANNEL_ID = "notification_forwarder_channel_v4";
+    private static final String CHANNEL_ID = "notification_forwarder_channel_v5";
     private static final int FOREGROUND_NOTIFICATION_ID = 1;
     private static final String OWN_PACKAGE_NAME = "com.example.notificationforwarder";
     private PreferenceManager preferenceManager;
@@ -319,17 +319,32 @@ public class NotificationService extends NotificationListenerService {
         String text = charText == null ? "" : charText.toString();
         String appName = getApplicationName(context, sbn, pkgName);
 
-        // 4. Keyword Filtering (e.g., WhatsApp logic)
         String lowerTitle = title.toLowerCase();
         String lowerText = text.toLowerCase();
         boolean isWhatsApp = appName.toLowerCase().contains("whatsapp");
-        boolean hasKeywords = lowerTitle.contains("school") || lowerTitle.contains("deliver")
-                || lowerText.contains("school") || lowerText.contains("deliver");
 
-        if (isWhatsApp && !hasKeywords) return;
+        // 4. Dynamic Keyword Filtering for WhatsApp
+        boolean hasTelegramKeywords = containsKeyword(lowerTitle, lowerText, preferenceManager.getParsedTelegramKeywords());
+        boolean hasSlackKeywords = containsKeyword(lowerTitle, lowerText, preferenceManager.getParsedSlackKeywords());
+
+        // If it's WhatsApp and it matches neither list, drop it.
+        if (isWhatsApp && !hasTelegramKeywords && !hasSlackKeywords) {
+            return;
+        }
 
         // 5. Channel Determination & Deduplication
-        String channel = (isWhatsApp && !"w".equals(profile)) ? "telegram" : "slack";
+        String channel;
+        if (isWhatsApp && !"w".equals(profile)) {
+            // Forward to Telegram if telegram keywords matched and it's not a work profile
+            if (hasTelegramKeywords ) {
+                channel = "telegram";
+            } else {
+                channel = "slack";
+            }
+        } else {
+            channel = "slack";
+        }
+        
         long lastSent = preferenceManager.getLruCache().get(text.hashCode());
 
         if (lastSent == -1) {
@@ -344,6 +359,16 @@ public class NotificationService extends NotificationListenerService {
 
             preferenceManager.getLruCache().put(text.hashCode(), notification.when);
         }
+    }
+    
+    private boolean containsKeyword(String lowerTitle, String lowerText, java.util.List<String> keywords) {
+        if (keywords == null || keywords.isEmpty()) return false;
+        for (String k : keywords) {
+            if (lowerTitle.contains(k) || lowerText.contains(k)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String getNotificationType(Context context, StatusBarNotification sbn) {
@@ -508,7 +533,7 @@ public class NotificationService extends NotificationListenerService {
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
                 "Notification Forwarder Service",
-                NotificationManager.IMPORTANCE_DEFAULT);
+                NotificationManager.IMPORTANCE_HIGH); // Changed to HIGH to pin to top
         channel.setDescription("Channel for Notification Forwarder Service");
         channel.setSound(null, null);
         channel.enableVibration(false);
@@ -531,6 +556,9 @@ public class NotificationService extends NotificationListenerService {
                 .setContentText(contentText)
                 .setSmallIcon(R.drawable.ic_stat_name)
                 .setContentIntent(pendingIntent)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setOngoing(true)
                 .setOnlyAlertOnce(true) // Prevent vibrating on every update
                 .build();
     }
