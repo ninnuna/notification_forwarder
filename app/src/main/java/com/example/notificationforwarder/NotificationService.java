@@ -350,12 +350,10 @@ public class NotificationService extends NotificationListenerService {
 
             // 6. Dynamic Channel Routing
             if (shouldSendTg) {
-                String tgChannel = getChannelKey("telegram", pkgName, profile);
-                sendMessage(tgChannel, title, text, senderInfo, appName, pkgName.toLowerCase(), sbn.getTag(), sbn.getId(), profile);
+                sendMessage("telegram", title, text, senderInfo, appName, pkgName.toLowerCase(), sbn.getTag(), sbn.getId(), profile);
             }
             if (shouldSendSlack) {
-                String slackChannel = getChannelKey("slack", pkgName, profile);
-                sendMessage(slackChannel, title, text, senderInfo, appName, pkgName.toLowerCase(), sbn.getTag(), sbn.getId(), profile);
+                sendMessage("slack", title, text, senderInfo, appName, pkgName.toLowerCase(), sbn.getTag(), sbn.getId(), profile);
             }
 
             preferenceManager.getLruCache().put(text.hashCode(), notification.when);
