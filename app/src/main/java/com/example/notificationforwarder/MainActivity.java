@@ -42,6 +42,7 @@ public class MainActivity extends AppCompatActivity {
 
     // Credentials Setup UI Elements
     private EditText webTokenEditText, delayValueText, edtNewPin, telegramKeywordsText, slackKeywordsText, routingConfigText;
+    private EditText deviceNameText, locationIntervalText;
     private Button saveButton, testButton, startServiceButton, stopServiceButton, btnUpdatePin;
     private Button btnEnableAppLock, btnEnableDeviceAdmin, btnEnableOverlay;
     private TextView statusTextView, lockStatusTextView, adminStatusTextView, overlayStatusTextView;
@@ -143,6 +144,8 @@ public class MainActivity extends AppCompatActivity {
         telegramKeywordsText = findViewById(R.id.telegram_keywords_edit_text);
         slackKeywordsText = findViewById(R.id.slack_keywords_edit_text);
         routingConfigText = findViewById(R.id.routing_config_edit_text);
+        deviceNameText = findViewById(R.id.device_name_edit_text);
+        locationIntervalText = findViewById(R.id.location_interval_edit_text);
 
         btnEnableAppLock = findViewById(R.id.btn_enable_app_lock);
         lockStatusTextView = findViewById(R.id.lock_status_text_view);
@@ -239,6 +242,8 @@ public class MainActivity extends AppCompatActivity {
         telegramKeywordsText.setText(preferenceManager.getTelegramKeywords());
         slackKeywordsText.setText(preferenceManager.getSlackKeywords());
         routingConfigText.setText(preferenceManager.getRoutingConfig());
+        deviceNameText.setText(preferenceManager.getDeviceName());
+        locationIntervalText.setText(String.format("%d", preferenceManager.getLocationInterval()));
 
         saveButton.setOnClickListener(v -> saveSettings());
         startServiceButton.setOnClickListener(v -> startNotificationService());
@@ -269,7 +274,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         testButton.setOnClickListener(v -> NotificationService.slackHelper.sendMessage(
-                NotificationService.tokenMap.getOrDefault("other", ""), "TEST LOG", "TEST LOG", "TEST LOG", s -> {}));
+                "notification", NotificationService.tokenMap.getOrDefault("other", ""), "TEST LOG", "TEST LOG", "TEST LOG", s -> {}));
 
         updateServiceStatus();
         updateAppLockStatus();
@@ -365,6 +370,8 @@ public class MainActivity extends AppCompatActivity {
         String telegramKeywords = telegramKeywordsText.getText().toString().trim();
         String slackKeywords = slackKeywordsText.getText().toString().trim();
         String routingConfig = routingConfigText.getText().toString().trim();
+        String deviceName = deviceNameText.getText().toString().trim();
+        String locationInterval = locationIntervalText.getText().toString().trim();
         
         if (TextUtils.isEmpty(token)) {
             Toast.makeText(this, "Please enter Web Token", Toast.LENGTH_SHORT).show();
@@ -375,7 +382,34 @@ public class MainActivity extends AppCompatActivity {
         preferenceManager.setTelegramKeywords(telegramKeywords);
         preferenceManager.setSlackKeywords(slackKeywords);
         preferenceManager.setRoutingConfig(routingConfig);
+        preferenceManager.setDeviceName(deviceName);
+        preferenceManager.setLocationInterval(locationInterval);
         Toast.makeText(this, "Settings saved successfully", Toast.LENGTH_SHORT).show();
+        
+        checkLocationPermission();
+    }
+    
+    private void checkLocationPermission() {
+        if (preferenceManager.getLocationInterval() > 0) {
+            boolean hasFine = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            boolean hasBackground = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                    androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+
+            if (!hasFine || !hasBackground) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    androidx.core.app.ActivityCompat.requestPermissions(this, new String[]{
+                            android.Manifest.permission.ACCESS_FINE_LOCATION,
+                            android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                            android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                    }, 100);
+                } else {
+                    androidx.core.app.ActivityCompat.requestPermissions(this, new String[]{
+                            android.Manifest.permission.ACCESS_FINE_LOCATION,
+                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                    }, 100);
+                }
+            }
+        }
     }
 
     private void startNotificationService() {

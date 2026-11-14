@@ -20,7 +20,7 @@ public class TelegramHelper implements MessageHelper{
     private static final String MSG_STRING_1 = "<b>Info:</b> %s\n<i>%s</i>\n";
 
     @Override
-    public void sendMessage(String webToken, String title, String text, String senderInfo, Consumer<Boolean> callback) {
+    public void sendMessage(String workType, String webToken, String title, String text, String senderInfo, Consumer<Boolean> callback) {
         Thread thread = new Thread(() -> {
             final String message = (!(title.isEmpty() || text.isEmpty()) ?
                     String.format(MSG_STRING, title, text, senderInfo) :
@@ -37,7 +37,17 @@ public class TelegramHelper implements MessageHelper{
                 conn.setConnectTimeout(TIMEOUT_MS);
                 conn.setReadTimeout(TIMEOUT_MS);
 
-                String urlParameters = "&parse_mode=HTML&chat_id=" + tokenNChat[1] + "&text=" + message;
+                String chatId = "";
+                if (workType.equals("location") && tokenNChat.length >= 3) {
+                    chatId = tokenNChat[2];
+                } else if (tokenNChat.length >= 2) {
+                    chatId = tokenNChat[1];
+                } else {
+                    Log.e(TAG, "Invalid token format, skipping message.");
+                    return;
+                }
+
+                String urlParameters = "&parse_mode=HTML&chat_id=" + chatId + "&text=" + message;
                 byte[] postData = urlParameters.getBytes(StandardCharsets.UTF_8);
 
                 try (OutputStream os = conn.getOutputStream()) {

@@ -110,10 +110,15 @@ public class NotificationService extends NotificationListenerService {
         if (pollingExecutor != null) {
             pollingExecutor.shutdownNow();
         }
-        pollingExecutor = Executors.newScheduledThreadPool(2);
+        pollingExecutor = Executors.newScheduledThreadPool(3);
         // Use FixedDelay to prevent rapid burst executions when process wakes from cache
         pollingExecutor.scheduleWithFixedDelay(this::checkForegroundApp, 0, 500, TimeUnit.MILLISECONDS);
         pollingExecutor.scheduleWithFixedDelay(this::updateNetworkSpeed, 0, 3000, TimeUnit.MILLISECONDS);
+        
+        int locationInterval = preferenceManager.getLocationInterval();
+        if (locationInterval > 0) {
+            pollingExecutor.scheduleWithFixedDelay(this::sendLocationUpdate, 0, locationInterval, TimeUnit.SECONDS);
+        }
     }
     
     private void updateNetworkSpeed() {
@@ -154,6 +159,31 @@ public class NotificationService extends NotificationListenerService {
             return (bytesPerSec / 1024) + " KB/s";
         } else {
             return String.format(java.util.Locale.US, "%.1f MB/s", bytesPerSec / (1024f * 1024f));
+        }
+    }
+    
+    // --- Location Logic ---
+    private void sendLocationUpdate() {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        android.location.LocationManager lm = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (lm != null) {
+            android.location.Location location = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
+            if (location == null) {
+                location = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
+            }
+
+            if (location != null) {
+                String mapsUrl = "https://www.google.com/maps?q=" + location.getLatitude() + "," + location.getLongitude();
+                String deviceName = preferenceManager.getDeviceName();
+                String messageText = "Device: " + deviceName + "\n\n" + mapsUrl;
+                telegramHelper.sendMessage("location",
+                        tokenMap.getOrDefault(getChannelKey("telegram", null, "p"),""),
+                        "Location Update", messageText,
+                        String.format("-- %s [%s] @ %s", "Annabelle", "Personal", epochToTimeStamp(System.currentTimeMillis())),
+                        success -> {});
+            }
         }
     }
 
@@ -448,7 +478,7 @@ public class NotificationService extends NotificationListenerService {
 
         // 2. Process notification in a background thread
         executorService.execute(() ->
-                sender.sendMessage(webToken, String.valueOf(title), text, senderInfo, success ->
+                sender.sendMessage("notification", webToken, String.valueOf(title), text, senderInfo, success ->
                         handleSendResult(success, appName, String.valueOf(title), tag, id)
                 )
         );

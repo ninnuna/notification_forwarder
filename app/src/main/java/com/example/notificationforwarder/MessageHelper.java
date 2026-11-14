@@ -20,7 +20,7 @@ public interface MessageHelper {
      * @param callback   A callback function that is invoked with a boolean
      * indicating the success (true) or failure (false) of the operation.
      */
-    default void sendMessage(String webToken, String title, String text, String senderInfo, Consumer<Boolean> callback) {
+    default void sendMessage(String workType, String webToken, String title, String text, String senderInfo, Consumer<Boolean> callback) {
         System.out.println("Default dummy implementation called !! call an actual helper here !!!");
     }
 }

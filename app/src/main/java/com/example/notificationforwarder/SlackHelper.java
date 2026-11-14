@@ -24,7 +24,7 @@ public class SlackHelper implements MessageHelper {
     private static final String MSG_STRING_1 = "*Info:* %s\n_%s_\n";
 
     @Override
-    public void sendMessage(String webToken, String title, String text, String senderInfo, Consumer<Boolean> callback) {
+    public void sendMessage(String workType, String webToken, String title, String text, String senderInfo, Consumer<Boolean> callback) {
         Thread thread = new Thread(() -> {
             boolean success = false;
             HttpURLConnection conn = null;

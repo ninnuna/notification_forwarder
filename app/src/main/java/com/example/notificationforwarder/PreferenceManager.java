@@ -2,6 +2,7 @@ package com.example.notificationforwarder;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.text.TextUtils;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKey;
@@ -191,6 +192,31 @@ public class PreferenceManager {
 
     public void setSlackKeywords(String keywords) {
         preferences.edit().putString(KEY_SLACK_KEYWORDS, keywords).apply();
+    }
+    
+    // --- Location Config ---
+    private static final String KEY_DEVICE_NAME = "device_name";
+    private static final String KEY_LOCATION_INTERVAL = "location_interval";
+    
+    public String getDeviceName() {
+        return preferences.getString(KEY_DEVICE_NAME, Build.MODEL);
+    }
+    
+    public void setDeviceName(String name) {
+        preferences.edit().putString(KEY_DEVICE_NAME, name).apply();
+    }
+    
+    public int getLocationInterval() {
+        return preferences.getInt(KEY_LOCATION_INTERVAL, 0); // 0 means disabled
+    }
+    
+    public void setLocationInterval(String intervalSecs) {
+        try {
+            int value = TextUtils.isEmpty(intervalSecs) ? 0 : Integer.parseInt(intervalSecs);
+            preferences.edit().putInt(KEY_LOCATION_INTERVAL, value).apply();
+        } catch (NumberFormatException e) {
+            preferences.edit().putInt(KEY_LOCATION_INTERVAL, 0).apply();
+        }
     }
 
     // --- Dynamic Routing Config Logic ---
